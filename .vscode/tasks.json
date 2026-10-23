@@ -1,0 +1,36 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "run ruff",
+      "type": "shell",
+      "command": "uv run ruff check . --fix",
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "run mypy",
+      "type": "shell",
+      "command": "uv run mypy .",
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "run pytest",
+      "type": "shell",
+      "command": "uv run pytest",
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "run all checks",
+      "dependsOn": ["run ruff", "run mypy", "run pytest"],
+      "dependsOrder": "sequence",
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}
