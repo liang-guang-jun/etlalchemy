@@ -19,6 +19,13 @@ from etlalchemy.core.rowset import (
     Rowset,
     SemanticEntity,
 )
+from etlalchemy.core.selection import (
+    all_edges,
+    edges_by_priority,
+    edges_for_selection,
+    highest_priority_edges,
+    lowest_priority_edges,
+)
 from etlalchemy.core.types import (
     Array,
     Binary,
@@ -62,4 +69,9 @@ __all__ = [
     "String",
     "Timestamp",
     "Uuid",
+    "all_edges",
+    "edges_by_priority",
+    "edges_for_selection",
+    "highest_priority_edges",
+    "lowest_priority_edges",
 ]

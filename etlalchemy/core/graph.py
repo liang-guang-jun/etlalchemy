@@ -1,19 +1,25 @@
-"""Graph analysis over the entities and relationships of a registry.
+"""Cycle analysis over explicit relationship sets.
 
-``GraphService`` treats a ``SemanticRegistry`` as a directed graph whose nodes
-are entity labels and whose edges are relationships. It detects simple cycles
-(including self-references) and reports structural problems so callers can
-refuse to traverse a model that cannot be ordered.
+``GraphService`` analyses one explicit collection of ``SemanticRelationship``
+edges and has no notion of ``priority``. Priority is a local selection group:
+each ``(source entity, target entity)`` pair may hold several relationships
+with different priorities, and at runtime every pair independently elects one
+effective relationship. The choices of different pairs are independent, so
+there is no global priority layer and the full set of combinations cannot be
+enumerated in advance. Callers therefore decide which edges to analyse;
+``etlalchemy.core.selection`` provides the standard choices — all edges for a
+worst-case check, highest priority for the default selection, an explicit
+selection mapping, or a single priority level at a time.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+from types import MappingProxyType
 from uuid import UUID
 
-from etlalchemy.core.model import SemanticRegistry
 from etlalchemy.core.relationship import Cardinality, SemanticRelationship
 from etlalchemy.core.rowset import SemanticEntity
 
@@ -31,14 +37,18 @@ class RelationshipCycleError(ValueError):
     """Raised when a model is required to be acyclic but contains a cycle."""
 
 
+#: Prefix applied to labels of entities absent from ``known_entities``.
+UNKNOWN_LABEL_PREFIX = "?"
+
+
 @dataclass(frozen=True)
 class Cycle:
     """A simple directed cycle of entities, anchored at its smallest node.
 
     ``entities`` holds the labels in traversal order without repeating the
     anchor, so ``a -> b -> a`` is stored as ``("a", "b")``. ``relationships``
-    holds the edges in the same order and is excluded from equality so cycles
-    from different registries still compare equal.
+    holds the edges in the same order; it is excluded from equality, so two
+    cycles are equal when their ``entities`` and ``kind`` match.
     """
 
     entities: tuple[str, ...]
@@ -54,11 +64,21 @@ class Cycle:
 
 
 def _classify(relationships: Sequence[SemanticRelationship]) -> CycleKind:
-    """Classify a closed walk by its edge cardinalities."""
+    """Classify a closed walk by the cardinalities of its edges.
+
+    Args:
+        relationships: Edges forming one closed walk, in traversal order.
+
+    Raises:
+        ValueError: If the walk is a single edge that is not a self reference.
+    """
     if len(relationships) == 1:
         only = relationships[0]
-        if only.source.entity.id == only.target.entity.id:
-            return CycleKind.SELF_REFERENCE
+        if only.source.entity.id != only.target.entity.id:
+            raise ValueError(
+                f"A single non-self relationship cannot form a cycle: {only.name!r}"
+            )
+        return CycleKind.SELF_REFERENCE
     cardinalities = {relationship.cardinality for relationship in relationships}
     if cardinalities == {Cardinality.ONE_TO_ONE}:
         return CycleKind.ONE_TO_ONE
@@ -67,101 +87,153 @@ def _classify(relationships: Sequence[SemanticRelationship]) -> CycleKind:
     return CycleKind.MIXED
 
 
-class GraphService:
-    """Cycle detection and structural validation for a SemanticRegistry.
+@dataclass(frozen=True)
+class _GraphIndex:
+    """Immutable adjacency index built from one explicit edge set."""
 
-    Nodes are labelled with the registry key when the entity is registered and
-    with ``SemanticEntity.alias`` otherwise. Adjacency lists are sorted by
-    ``(target, relationship name)`` so every result is deterministic regardless
-    of registration order.
+    nodes: tuple[str, ...]
+    adjacency: Mapping[str, tuple[tuple[str, SemanticRelationship], ...]]
+    unknown: tuple[tuple[str, str], ...]
+
+
+def _resolve_label(
+    entity: SemanticEntity, known_entities: Mapping[UUID, str]
+) -> tuple[str, bool]:
+    """Return the display label of an entity and whether it is known."""
+    label = known_entities.get(entity.id)
+    if label is not None:
+        return label, True
+    return f"{UNKNOWN_LABEL_PREFIX}{entity.alias}", False
+
+
+def _build_index(
+    relationships: Iterable[SemanticRelationship],
+    known_entities: Mapping[UUID, str],
+) -> _GraphIndex:
+    """Index an explicit edge set by source label, target label and name."""
+    adjacency: dict[str, list[tuple[str, SemanticRelationship]]] = {}
+    unknown: set[tuple[str, str]] = set()
+    for relationship in relationships:
+        source, source_known = _resolve_label(
+            relationship.source.entity, known_entities
+        )
+        target, target_known = _resolve_label(
+            relationship.target.entity, known_entities
+        )
+        if not source_known:
+            unknown.add((relationship.name, source))
+        if not target_known:
+            unknown.add((relationship.name, target))
+        adjacency.setdefault(source, []).append((target, relationship))
+        adjacency.setdefault(target, [])
+    frozen = {
+        node: tuple(sorted(edges, key=lambda edge: (edge[0], edge[1].name)))
+        for node, edges in adjacency.items()
+    }
+    return _GraphIndex(
+        nodes=tuple(sorted(frozen)),
+        adjacency=MappingProxyType(frozen),
+        unknown=tuple(sorted(unknown)),
+    )
+
+
+class GraphService:
+    """Cycle detection over one explicit set of relationships.
+
+    The service never reads ``SemanticRelationship.priority``: the caller picks
+    the edge set and the service judges only that set. Priorities are local
+    selection groups per ``(source entity, target entity)`` pair, so there is no
+    global layer to analyse; use ``etlalchemy.core.selection`` to build the edge
+    set for a worst-case check, the default (highest priority) selection, an
+    explicit selection, or a single priority level.
+
+    Labels come from ``known_entities`` when an entity id is mapped there.
+    Entities missing from that mapping use their alias prefixed with ``?``, so
+    unknown labels never collide with known ones.
+
+    Adjacency lists are sorted by ``(target, relationship name)`` and nodes are
+    sorted, so every result is deterministic regardless of input order.
 
     Cycle enumeration is exponential in the worst case (a dense graph has
-    exponentially many simple cycles); it is intended for models of the size a
-    human authors by hand.
+    exponentially many simple cycles) and is meant for models of the size a
+    human authors by hand; prefer ``has_cycle`` when only a boolean is needed.
     """
 
-    def __init__(self, registry: SemanticRegistry) -> None:
-        """Build the adjacency index for a registry."""
-        self._labels: dict[UUID, str] = {
-            entity.id: name for name, entity in registry.entities.items()
-        }
-        self._adjacency: dict[str, list[tuple[str, SemanticRelationship]]] = {
-            name: [] for name in registry.entities
-        }
-        unknown: set[tuple[str, str]] = set()
-        for relationship in registry.relationships:
-            source, source_known = self._resolve(relationship.source.entity)
-            target, target_known = self._resolve(relationship.target.entity)
-            if not source_known:
-                unknown.add((relationship.name, source))
-            if not target_known:
-                unknown.add((relationship.name, target))
-            self._adjacency.setdefault(source, []).append((target, relationship))
-            self._adjacency.setdefault(target, [])
-        for edges in self._adjacency.values():
-            edges.sort(key=lambda edge: (edge[0], edge[1].name))
-        self._unknown: tuple[tuple[str, str], ...] = tuple(sorted(unknown))
-        self._nodes: tuple[str, ...] = tuple(sorted(self._adjacency))
-
-    def _resolve(self, entity: SemanticEntity) -> tuple[str, bool]:
-        """Return the node label and whether the entity is in the registry."""
-        label = self._labels.get(entity.id)
-        if label is not None:
-            return label, True
-        return entity.alias, False
+    def __init__(
+        self,
+        relationships: Iterable[SemanticRelationship],
+        known_entities: Mapping[UUID, str] | None = None,
+    ) -> None:
+        """Index an explicit relationship set with optional display labels."""
+        self._index = _build_index(relationships, known_entities or {})
 
     @property
     def nodes(self) -> tuple[str, ...]:
         """Return every entity label in sorted order."""
-        return self._nodes
+        return self._index.nodes
 
     @property
     def edges(self) -> tuple[tuple[str, str, str], ...]:
         """Return ``(source, target, relationship name)`` triples."""
         return tuple(
             (source, target, relationship.name)
-            for source in self._nodes
-            for target, relationship in self._adjacency[source]
+            for source in self._index.nodes
+            for target, relationship in self._index.adjacency[source]
         )
 
     def neighbors(self, node: str) -> tuple[str, ...]:
-        """Return the sorted successor labels of ``node``."""
-        return tuple(target for target, _ in self._adjacency[node])
+        """Return the sorted successor labels of ``node``.
+
+        Raises:
+            KeyError: If ``node`` is not part of the analysed edge set, with
+                the message ``Unknown node '...'``.
+        """
+        adjacency = self._index.adjacency
+        if node not in adjacency:
+            raise KeyError(f"Unknown node {node!r}")
+        return tuple(target for target, _ in adjacency[node])
 
     def has_cycle(self) -> bool:
-        """Return whether the graph contains at least one cycle.
+        """Return whether the edge set contains at least one cycle.
 
         Uses Kahn's topological sort, which runs in ``O(V + E)`` and never
-        allocates the cycles themselves.
+        allocates cycle objects.
         """
-        indegree = dict.fromkeys(self._nodes, 0)
-        for source in self._nodes:
-            for target, _ in self._adjacency[source]:
+        adjacency = self._index.adjacency
+        nodes = self._index.nodes
+        indegree = dict.fromkeys(nodes, 0)
+        for source in nodes:
+            for target, _ in adjacency[source]:
                 indegree[target] += 1
-        ready = [node for node in self._nodes if indegree[node] == 0]
+        ready = [node for node in nodes if indegree[node] == 0]
         visited = 0
         while ready:
             source = ready.pop()
             visited += 1
-            for target, _ in self._adjacency[source]:
+            for target, _ in adjacency[source]:
                 indegree[target] -= 1
                 if indegree[target] == 0:
                     ready.append(target)
-        return visited != len(self._nodes)
+        return visited != len(nodes)
 
     def find_cycles(self) -> tuple[Cycle, ...]:
-        """Return every simple cycle, each anchored at its smallest node.
+        """Return each distinct simple cycle, anchored at its smallest node.
 
-        A cycle is enumerated exactly once because traversal from its anchor
-        only descends into labels greater than the anchor.
+        Parallel relationships between the same pair of entities can produce
+        the same node sequence with different edges; such cycles compare equal
+        on ``(entities, kind)``, so the first one is reported and the rest are
+        dropped. Traversal only descends into labels greater than the anchor,
+        which already visits every node sequence once.
         """
-        order = {node: index for index, node in enumerate(self._nodes)}
-        cycles: list[Cycle] = []
-        for start in self._nodes:
+        adjacency = self._index.adjacency
+        nodes = self._index.nodes
+        order = {node: index for index, node in enumerate(nodes)}
+        unique: dict[tuple[tuple[str, ...], CycleKind], Cycle] = {}
+        for start in nodes:
             path = [start]
             on_path = {start}
             walked: list[SemanticRelationship] = []
-            stack = [iter(self._adjacency[start])]
+            stack = [iter(adjacency[start])]
             while stack:
                 try:
                     target, relationship = next(stack[-1])
@@ -173,31 +245,30 @@ class GraphService:
                     continue
                 if target == start:
                     closed = (*walked, relationship)
-                    cycles.append(
-                        Cycle(
-                            entities=tuple(path),
-                            kind=_classify(closed),
-                            relationships=closed,
-                        )
+                    cycle = Cycle(
+                        entities=tuple(path),
+                        kind=_classify(closed),
+                        relationships=closed,
                     )
+                    unique.setdefault((cycle.entities, cycle.kind), cycle)
                 elif target not in on_path and order[target] > order[start]:
                     path.append(target)
                     on_path.add(target)
                     walked.append(relationship)
-                    stack.append(iter(self._adjacency[target]))
-        return tuple(cycles)
+                    stack.append(iter(adjacency[target]))
+        return tuple(unique.values())
 
     def validate(self) -> tuple[str, ...]:
-        """Return human-readable problems; an empty tuple means the graph is valid."""
+        """Return human-readable problems; an empty tuple means a valid graph."""
         problems = [
             f"Relationship '{name}' references unknown entity '{label}'"
-            for name, label in self._unknown
+            for name, label in self._index.unknown
         ]
         problems.extend(f"Cycle detected: {cycle}" for cycle in self.find_cycles())
         return tuple(problems)
 
     def ensure_acyclic(self) -> None:
-        """Raise RelationshipCycleError listing every cycle in the graph."""
+        """Raise RelationshipCycleError listing every cycle in the edge set."""
         cycles = self.find_cycles()
         if cycles:
             details = "; ".join(str(cycle) for cycle in cycles)

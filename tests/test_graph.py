@@ -1,176 +1,162 @@
-"""Tests for GraphService cycle detection and structural validation."""
+"""Tests for GraphService cycle detection over explicit relationship sets."""
 
 from __future__ import annotations
 
-from uuid import UUID, uuid5
+from typing import Any, cast
 
 import pytest
 from etlalchemy.core import (
     Cardinality,
     Cycle,
     CycleKind,
-    Field,
-    FieldCollection,
     GraphService,
-    Materialization,
     RelationshipCycleError,
-    Rowset,
-    SemanticEntity,
-    SemanticRegistry,
-    SemanticRelationship,
-    String,
 )
+from etlalchemy.core.graph import _classify
 
-NAMESPACE = UUID("00000000-0000-0000-0000-000000000000")
-
-
-def _entity(name: str) -> SemanticEntity:
-    """Build a single-column entity named after its rowset."""
-    fields = {"id": Field(name="id", data_type=String())}
-    rowset = Rowset(name=name, kind=Materialization.TABLE, fields=fields)
-    return SemanticEntity(id=uuid5(NAMESPACE, name), alias=name, relation=rowset)
+from builders import entity, known, relationship
 
 
-def _registry(*names: str) -> tuple[SemanticRegistry, dict[str, SemanticEntity]]:
-    """Build a registry plus a name-to-entity lookup."""
-    registry = SemanticRegistry()
-    entities = {name: _entity(name) for name in names}
-    registry.entities.update(entities)
-    return registry, entities
+def test_acyclic_edge_set_has_no_cycle() -> None:
+    """A DAG edge set reports no cycles and validates cleanly."""
+    a, b, c = entity("a"), entity("b"), entity("c")
+    edges = (relationship("ab", a, b), relationship("bc", b, c))
 
+    service = GraphService(edges, known(a, b, c))
 
-def _edge(
-    registry: SemanticRegistry,
-    name: str,
-    source: SemanticEntity,
-    target: SemanticEntity,
-    cardinality: Cardinality = Cardinality.ONE_TO_MANY,
-) -> SemanticRelationship:
-    """Append a single-column relationship to the registry and return it."""
-    relationship = SemanticRelationship(
-        name=name,
-        source=FieldCollection(source, (source.relation.fields["id"],)),
-        target=FieldCollection(target, (target.relation.fields["id"],)),
-        cardinality=cardinality,
-    )
-    registry.relationships.append(relationship)
-    return relationship
-
-
-def test_acyclic_chain_has_no_cycles() -> None:
-    """A plain DAG reports no cycles and validates cleanly."""
-    registry, entities = _registry("a", "b", "c")
-    _edge(registry, "ab", entities["a"], entities["b"])
-    _edge(registry, "bc", entities["b"], entities["c"])
-
-    service = GraphService(registry)
-
-    assert service.find_cycles() == ()
+    assert service.nodes == ("a", "b", "c")
     assert service.has_cycle() is False
+    assert service.find_cycles() == ()
     assert service.validate() == ()
     service.ensure_acyclic()
 
 
-def test_self_reference_is_a_cycle() -> None:
-    """An entity referencing itself is a self-reference cycle."""
-    registry, entities = _registry("a")
-    _edge(registry, "self", entities["a"], entities["a"])
+def test_cyclic_edge_set_is_detected() -> None:
+    """has_cycle and find_cycles agree on a two-entity cycle."""
+    a, b = entity("a"), entity("b")
+    edges = (relationship("ab", a, b), relationship("ba", b, a))
 
-    cycles = GraphService(registry).find_cycles()
+    service = GraphService(edges, known(a, b))
+
+    assert service.has_cycle() is True
+    assert [cycle.entities for cycle in service.find_cycles()] == [("a", "b")]
+
+
+def test_self_reference_is_a_cycle() -> None:
+    """An entity relating to itself is a self-reference cycle."""
+    a = entity("a")
+
+    cycles = GraphService([relationship("self", a, a)], known(a)).find_cycles()
 
     assert len(cycles) == 1
     assert cycles[0].entities == ("a",)
     assert cycles[0].kind is CycleKind.SELF_REFERENCE
-    assert str(cycles[0]) == "a -> a (SELF_REFERENCE)"
 
 
-def test_two_entity_cycle_reported_once() -> None:
-    """A -> B -> A is reported once, anchored at the smallest node."""
-    registry, entities = _registry("a", "b")
-    _edge(registry, "ab", entities["a"], entities["b"])
-    _edge(registry, "ba", entities["b"], entities["a"])
+def test_three_entity_cycle_keeps_traversal_order() -> None:
+    """Longer cycles keep the order of their edges."""
+    a, b, c = entity("a"), entity("b"), entity("c")
+    edges = (
+        relationship("ab", a, b),
+        relationship("bc", b, c),
+        relationship("ca", c, a),
+    )
 
-    cycles = GraphService(registry).find_cycles()
-
-    assert [cycle.entities for cycle in cycles] == [("a", "b")]
-    assert [rel.name for rel in cycles[0].relationships] == ["ab", "ba"]
-
-
-def test_three_entity_cycle() -> None:
-    """Longer cycles keep their traversal order."""
-    registry, entities = _registry("a", "b", "c")
-    _edge(registry, "ab", entities["a"], entities["b"])
-    _edge(registry, "bc", entities["b"], entities["c"])
-    _edge(registry, "ca", entities["c"], entities["a"])
-
-    cycles = GraphService(registry).find_cycles()
+    cycles = GraphService(edges, known(a, b, c)).find_cycles()
 
     assert [cycle.entities for cycle in cycles] == [("a", "b", "c")]
 
 
 def test_cycle_kind_one_to_one() -> None:
     """A ring of one-to-one edges is classified as ONE_TO_ONE."""
-    registry, entities = _registry("a", "b")
-    _edge(registry, "ab", entities["a"], entities["b"], Cardinality.ONE_TO_ONE)
-    _edge(registry, "ba", entities["b"], entities["a"], Cardinality.ONE_TO_ONE)
+    a, b = entity("a"), entity("b")
+    edges = (
+        relationship("ab", a, b, cardinality=Cardinality.ONE_TO_ONE),
+        relationship("ba", b, a, cardinality=Cardinality.ONE_TO_ONE),
+    )
 
-    assert GraphService(registry).find_cycles()[0].kind is CycleKind.ONE_TO_ONE
+    cycle = GraphService(edges, known(a, b)).find_cycles()[0]
+
+    assert cycle.kind is CycleKind.ONE_TO_ONE
 
 
 def test_cycle_kind_many_to_many() -> None:
     """Any many-to-many edge dominates the classification."""
-    registry, entities = _registry("a", "b")
-    _edge(registry, "ab", entities["a"], entities["b"], Cardinality.MANY_TO_MANY)
-    _edge(registry, "ba", entities["b"], entities["a"], Cardinality.ONE_TO_MANY)
+    a, b = entity("a"), entity("b")
+    edges = (
+        relationship("ab", a, b, cardinality=Cardinality.MANY_TO_MANY),
+        relationship("ba", b, a),
+    )
 
-    assert GraphService(registry).find_cycles()[0].kind is CycleKind.MANY_TO_MANY
+    cycle = GraphService(edges, known(a, b)).find_cycles()[0]
+
+    assert cycle.kind is CycleKind.MANY_TO_MANY
 
 
 def test_cycle_kind_mixed() -> None:
-    """One-to-many edges mixed with one-to-one edges are MIXED."""
-    registry, entities = _registry("a", "b", "c")
-    _edge(registry, "ab", entities["a"], entities["b"], Cardinality.ONE_TO_MANY)
-    _edge(registry, "bc", entities["b"], entities["c"], Cardinality.ONE_TO_ONE)
-    _edge(registry, "ca", entities["c"], entities["a"], Cardinality.ONE_TO_MANY)
+    """One-to-many plus one-to-one edges are classified as MIXED."""
+    a, b, c = entity("a"), entity("b"), entity("c")
+    edges = (
+        relationship("ab", a, b),
+        relationship("bc", b, c, cardinality=Cardinality.ONE_TO_ONE),
+        relationship("ca", c, a),
+    )
 
-    assert GraphService(registry).find_cycles()[0].kind is CycleKind.MIXED
+    cycle = GraphService(edges, known(a, b, c)).find_cycles()[0]
 
-
-def test_parallel_edges_are_not_a_cycle() -> None:
-    """Two relationships between the same pair do not form a cycle."""
-    registry, entities = _registry("a", "b")
-    _edge(registry, "ab_1", entities["a"], entities["b"])
-    _edge(registry, "ab_2", entities["a"], entities["b"])
-
-    service = GraphService(registry)
-
-    assert service.find_cycles() == ()
-    assert service.has_cycle() is False
+    assert cycle.kind is CycleKind.MIXED
 
 
-def test_find_cycles_is_deterministic() -> None:
-    """Registry insertion order does not change the reported cycles."""
-    forward, forward_entities = _registry("a", "b", "c")
-    _edge(forward, "ab", forward_entities["a"], forward_entities["b"])
-    _edge(forward, "ba", forward_entities["b"], forward_entities["a"])
-    _edge(forward, "bc", forward_entities["b"], forward_entities["c"])
-    _edge(forward, "cb", forward_entities["c"], forward_entities["b"])
+def test_parallel_edges_report_single_cycle() -> None:
+    """Parallel relationships on the same node sequence yield one cycle."""
+    a, b = entity("a"), entity("b")
+    edges = (
+        relationship("ab_hi", a, b, priority=5),
+        relationship("ab_lo", a, b, priority=1),
+        relationship("ba", b, a),
+    )
 
-    reverse, reverse_entities = _registry("c", "b", "a")
-    _edge(reverse, "cb", reverse_entities["c"], reverse_entities["b"])
-    _edge(reverse, "bc", reverse_entities["b"], reverse_entities["c"])
-    _edge(reverse, "ba", reverse_entities["b"], reverse_entities["a"])
-    _edge(reverse, "ab", reverse_entities["a"], reverse_entities["b"])
+    cycles = GraphService(edges, known(a, b)).find_cycles()
 
-    assert GraphService(forward).find_cycles() == GraphService(reverse).find_cycles()
+    assert [cycle.entities for cycle in cycles] == [("a", "b")]
+    assert [item.name for item in cycles[0].relationships] == ["ab_hi", "ba"]
 
 
-def test_edges_are_exposed_in_sorted_order() -> None:
+def test_unknown_entities_get_prefixed_label() -> None:
+    """Entities missing from known_entities are labelled with a '?' prefix."""
+    a, ghost = entity("a"), entity("ghost")
+
+    service = GraphService([relationship("gone", a, ghost)], known(a))
+
+    assert service.nodes == ("?ghost", "a")
+    assert service.edges == (("a", "?ghost", "gone"),)
+
+
+def test_unknown_label_does_not_collide_with_known_label() -> None:
+    """An unknown entity sharing an alias with a known label stays distinct."""
+    listed = entity("orders")
+    twin = entity("orders", id_text="orders-twin")
+
+    service = GraphService([relationship("link", twin, listed)], known(listed))
+
+    assert service.nodes == ("?orders", "orders")
+    assert service.edges == (("?orders", "orders", "link"),)
+
+
+def test_validate_reports_unknown_entities() -> None:
+    """Relationships reaching outside the known entities are reported."""
+    a, ghost = entity("a"), entity("ghost")
+
+    problems = GraphService([relationship("gone", a, ghost)], known(a)).validate()
+
+    assert problems == ("Relationship 'gone' references unknown entity '?ghost'",)
+
+
+def test_edges_and_neighbors_are_sorted() -> None:
     """Nodes, edges and neighbours are deterministic and sorted."""
-    registry, entities = _registry("a", "b")
-    _edge(registry, "ab", entities["a"], entities["b"])
+    a, b = entity("a"), entity("b")
 
-    service = GraphService(registry)
+    service = GraphService([relationship("ab", a, b)], known(a, b))
 
     assert service.nodes == ("a", "b")
     assert service.edges == (("a", "b", "ab"),)
@@ -178,16 +164,18 @@ def test_edges_are_exposed_in_sorted_order() -> None:
     assert service.neighbors("b") == ()
 
 
-def test_multiple_cycles_in_one_graph() -> None:
+def test_multiple_cycles_reported_in_deterministic_order() -> None:
     """Independent cycles and a self-loop are all reported, in sorted order."""
-    registry, entities = _registry("a", "b", "c")
-    _edge(registry, "ab", entities["a"], entities["b"])
-    _edge(registry, "ba", entities["b"], entities["a"])
-    _edge(registry, "bb", entities["b"], entities["b"])
-    _edge(registry, "bc", entities["b"], entities["c"])
-    _edge(registry, "cb", entities["c"], entities["b"])
+    a, b, c = entity("a"), entity("b"), entity("c")
+    edges = (
+        relationship("ab", a, b),
+        relationship("ba", b, a),
+        relationship("bb", b, b),
+        relationship("bc", b, c),
+        relationship("cb", c, b),
+    )
 
-    cycles = GraphService(registry).find_cycles()
+    cycles = GraphService(edges, known(a, b, c)).find_cycles()
 
     assert [(cycle.entities, cycle.kind) for cycle in cycles] == [
         (("a", "b"), CycleKind.MIXED),
@@ -196,34 +184,80 @@ def test_multiple_cycles_in_one_graph() -> None:
     ]
 
 
-def test_validate_reports_unknown_entity() -> None:
-    """Relationships pointing outside the registry are reported."""
-    registry, entities = _registry("a")
-    _edge(registry, "gone", entities["a"], _entity("ghost"))
+def test_find_cycles_is_deterministic() -> None:
+    """Input order does not change the reported cycles."""
+    a, b, c = entity("a"), entity("b"), entity("c")
+    forward = [
+        relationship("ab", a, b),
+        relationship("ba", b, a),
+        relationship("bc", b, c),
+        relationship("cb", c, b),
+    ]
+    labels = known(a, b, c)
 
-    problems = GraphService(registry).validate()
-
-    assert problems == ("Relationship 'gone' references unknown entity 'ghost'",)
+    assert (
+        GraphService(forward, labels).find_cycles()
+        == GraphService(reversed(forward), labels).find_cycles()
+    )
 
 
 def test_ensure_acyclic_raises_with_cycle_details() -> None:
     """ensure_acyclic raises a RelationshipCycleError naming the cycle."""
-    registry, entities = _registry("a", "b")
-    _edge(registry, "ab", entities["a"], entities["b"])
-    _edge(registry, "ba", entities["b"], entities["a"])
+    a, b = entity("a"), entity("b")
+    edges = (relationship("ab", a, b), relationship("ba", b, a))
 
     with pytest.raises(RelationshipCycleError, match=r"a -> b -> a"):
-        GraphService(registry).ensure_acyclic()
+        GraphService(edges, known(a, b)).ensure_acyclic()
 
 
-def test_cycle_dataclass_is_hashable() -> None:
-    """Cycles can be collected in sets and compared by value."""
-    cycle = Cycle(
-        entities=("a", "b"),
-        relationships=(),
-        kind=CycleKind.MIXED,
-    )
+def test_classify_rejects_single_non_self_edge() -> None:
+    """A lone non-self edge is not a closed walk."""
+    a, b = entity("a"), entity("b")
 
-    assert hash(cycle) == hash(
-        Cycle(entities=("a", "b"), relationships=(), kind=CycleKind.MIXED)
-    )
+    with pytest.raises(ValueError, match="single non-self"):
+        _classify([relationship("ab", a, b)])
+
+
+def test_classify_accepts_single_self_edge() -> None:
+    """A lone self edge is a closed walk."""
+    a = entity("a")
+
+    assert _classify([relationship("self", a, a)]) is CycleKind.SELF_REFERENCE
+
+
+def test_cycle_str_format() -> None:
+    """Cycles render as an arrow path followed by the kind."""
+    cycle = Cycle(entities=("a", "b"), kind=CycleKind.ONE_TO_ONE)
+
+    assert str(cycle) == "a -> b -> a (ONE_TO_ONE)"
+
+
+def test_cycle_equality_ignores_relationships() -> None:
+    """Equality and hashing only use the entities and the kind."""
+    a, b = entity("a"), entity("b")
+    with_edges = Cycle(("a", "b"), CycleKind.MIXED, (relationship("ab", a, b),))
+    without_edges = Cycle(("a", "b"), CycleKind.MIXED)
+
+    assert with_edges == without_edges
+    assert hash(with_edges) == hash(without_edges)
+
+
+def test_neighbors_rejects_unknown_node() -> None:
+    """Unknown labels raise a KeyError that names the node."""
+    a, b = entity("a"), entity("b")
+    service = GraphService([relationship("ab", a, b)], known(a, b))
+
+    with pytest.raises(KeyError) as excinfo:
+        service.neighbors("missing")
+
+    assert "Unknown node 'missing'" in str(excinfo.value)
+
+
+def test_graph_index_adjacency_is_read_only() -> None:
+    """The index adjacency mapping rejects mutation."""
+    a, b = entity("a"), entity("b")
+    service = GraphService([relationship("ab", a, b)], known(a, b))
+    adjacency = cast("Any", service._index.adjacency)
+
+    with pytest.raises(TypeError):
+        adjacency["a"] = ()
