@@ -23,6 +23,18 @@
       "group": "test"
     },
     {
+      "label": "build code snapshot",
+      "type": "shell",
+      "command": "uv run python .vscode/build_snapshot.py",
+      "problemMatcher": [],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
       "label": "run all checks",
       "dependsOn": ["run ruff", "run mypy", "run pytest"],
       "dependsOrder": "sequence",
