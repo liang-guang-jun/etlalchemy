@@ -1,17 +1,27 @@
 """Public API for the semantic core layer."""
 
+from etlalchemy.core.expression import (
+    FieldRef,
+    Filter,
+    MeasureRef,
+    OrderBy,
+    Pair,
+    Query,
+)
 from etlalchemy.core.graph import (
     Cycle,
     CycleKind,
     GraphService,
     RelationshipCycleError,
 )
+from etlalchemy.core.measure import Measure
 from etlalchemy.core.model import MergeStrategy, SemanticModel, SemanticRegistry
 from etlalchemy.core.relationship import (
     Cardinality,
     FilterDirection,
     SemanticRelationship,
 )
+from etlalchemy.core.routing import effective_routes
 from etlalchemy.core.rowset import (
     Field,
     FieldCollection,
@@ -53,13 +63,20 @@ __all__ = [
     "Decimal",
     "Field",
     "FieldCollection",
+    "FieldRef",
+    "Filter",
     "FilterDirection",
     "Float",
     "GraphService",
     "Integer",
     "Json",
     "Materialization",
+    "Measure",
+    "MeasureRef",
     "MergeStrategy",
+    "OrderBy",
+    "Pair",
+    "Query",
     "RelationshipCycleError",
     "Rowset",
     "SemanticEntity",
@@ -72,6 +89,7 @@ __all__ = [
     "all_edges",
     "edges_by_priority",
     "edges_for_selection",
+    "effective_routes",
     "highest_priority_edges",
     "lowest_priority_edges",
 ]

@@ -12,16 +12,23 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from etlalchemy.core.graph import GraphService
+from etlalchemy.core.measure import Measure
 from etlalchemy.core.relationship import SemanticRelationship
 from etlalchemy.core.rowset import SemanticEntity
 
 
 @dataclass
 class SemanticRegistry:
-    """Registry of entities and relationships."""
+    """Registry of a model's entities, relationships and measures.
+
+    ``entities`` maps entity names to their definitions, ``relationships``
+    holds the edges between them, and ``measures`` maps measure names to their
+    definitions.
+    """
 
     entities: dict[str, SemanticEntity] = field(default_factory=dict)
     relationships: list[SemanticRelationship] = field(default_factory=list)
+    measures: dict[str, Measure] = field(default_factory=dict)
 
 
 class MergeStrategy(StrEnum):

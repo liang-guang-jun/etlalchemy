@@ -25,11 +25,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from uuid import UUID
 
+from etlalchemy.core.expression import Pair
 from etlalchemy.core.model import SemanticRegistry
 from etlalchemy.core.relationship import SemanticRelationship
-
-#: Key of one local selection group: ``(source entity id, target entity id)``.
-Pair = tuple[UUID, UUID]
 
 
 def _pair(relationship: SemanticRelationship) -> Pair:
