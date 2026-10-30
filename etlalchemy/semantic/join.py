@@ -7,10 +7,17 @@ column, which keeps the original relationship behaviour. ``ExpressionJoin``
 renders an arbitrary SQL predicate that references the joined tables through
 the ``{source}`` and ``{target}`` placeholders.
 
+``EquiJoin`` names its ``FieldCollection`` fields ``source`` and ``target``,
+while ``ExpressionJoin`` only needs the entity aliases and names them
+``source_entity`` and ``target_entity``. Callers that do not know which kind
+they hold use ``source_entity_alias()`` and ``target_entity_alias()``.
+
 First-version limits of ``ExpressionJoin``: the expression cannot bind literal
 parameters (the caller must express such values through a filter predicate),
 it only supports ``filter_direction="SINGLE"``, and it rejects any placeholder
-other than ``{source}`` and ``{target}``.
+other than exactly ``{source}`` and ``{target}``. Format specifiers
+(``{source:...}``), conversions (``{source!r}``), nested or doubled braces and
+unbalanced braces are all rejected.
 """
 
 from __future__ import annotations
@@ -21,6 +28,34 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from etlalchemy.semantic.rowset import FieldCollection
+
+#: Placeholders an expression join may use.
+_ALLOWED_PLACEHOLDERS = frozenset({"{source}", "{target}"})
+
+#: Error message used when the expression braces do not form placeholders.
+_MALFORMED_PLACEHOLDER = (
+    "Join expression has malformed placeholders; only {source} and {target} "
+    "are supported"
+)
+
+
+def _placeholder_tokens(expression: str) -> set[str]:
+    """Return the ``{...}`` tokens of an expression, rejecting stray braces.
+
+    Raises:
+        ValueError: If braces remain outside a complete ``{...}`` token, as in
+            ``{source``, or if one token opens twice, as in ``{{source}}``.
+    """
+    tokens = set(re.findall(r"\{[^}]*\}", expression))
+    for token in tokens:
+        if token.count("{") > 1:
+            raise ValueError(_MALFORMED_PLACEHOLDER)
+    remainder = expression
+    for token in tokens:
+        remainder = remainder.replace(token, "")
+    if "{" in remainder or "}" in remainder:
+        raise ValueError(_MALFORMED_PLACEHOLDER)
+    return tokens
 
 
 @runtime_checkable
@@ -107,7 +142,10 @@ class ExpressionJoin:
     rejected. No literal binding is supported inside the expression; if a
     parameter is needed, the caller must pass it through a separate filter
     predicate. Only ``filter_direction="SINGLE"`` is supported in the first
-    version.
+    version, which ``SemanticRelationship`` enforces at construction.
+
+    ``source_entity`` may equal ``target_entity`` for a self join; the graph
+    layer classifies such a single edge as a self reference.
     """
 
     source_entity: str
@@ -116,9 +154,7 @@ class ExpressionJoin:
 
     def __post_init__(self) -> None:
         """Validate that the expression uses only known placeholders."""
-        allowed = {"{source}", "{target}"}
-        tokens = set(re.findall(r"\{[^}]+\}", self.expression))
-        unknown = tokens - allowed
+        unknown = _placeholder_tokens(self.expression) - _ALLOWED_PLACEHOLDERS
         if unknown:
             raise ValueError(f"Unsupported placeholders in join expression: {unknown}")
 
@@ -141,8 +177,16 @@ class ExpressionJoin:
         bind_literals: bool,
         add_parameter: Callable[[object], str],
     ) -> tuple[str, list[object]]:
-        """Return the expression ON clause; no parameters are produced."""
+        """Return the expression ON clause; no parameters are produced.
+
+        ``bind_literals`` and ``add_parameter`` are accepted for protocol
+        compatibility but ignored: an opaque expression cannot expose its
+        literals, so every value in it is inlined in the SQL text.
+        """
         rendered = self.expression.replace("{source}", source_alias).replace(
             "{target}", target_alias
         )
         return rendered, []
+
+
+__all__ = ["EquiJoin", "ExpressionJoin", "JoinCondition"]

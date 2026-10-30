@@ -7,7 +7,7 @@ with different priorities, and at runtime every pair independently elects one
 effective relationship. The choices of different pairs are independent, so
 there is no global priority layer and the full set of combinations cannot be
 enumerated in advance. Callers therefore decide which edges to analyse;
-``etlalchemy.core.selection`` provides the standard choices — all edges for a
+``etlalchemy.semantic.selection`` provides the standard choices — all edges for a
 worst-case check, highest priority for the default selection, an explicit
 selection mapping, or a single priority level at a time.
 """
@@ -45,7 +45,8 @@ class Cycle:
     """A simple directed cycle of entities, anchored at its smallest node.
 
     ``entities`` holds the labels in traversal order without repeating the
-    anchor, so ``a -> b -> a`` is stored as ``("a", "b")``. ``relationships``
+    anchor, so ``a -> b -> a`` is stored as ``("a", "b")``. It always holds
+    at least one label, because a cycle has to visit a node. ``relationships``
     holds the edges in the same order; it is excluded from equality, so two
     cycles are equal when their ``entities`` and ``kind`` match.
     """
@@ -64,6 +65,11 @@ class Cycle:
 
 def _classify(relationships: Sequence[SemanticRelationship]) -> CycleKind:
     """Classify a closed walk by the cardinalities of its edges.
+
+    A single edge is a self reference when its source and target aliases match.
+    That holds for an ``ExpressionJoin`` whose ``source_entity`` equals its
+    ``target_entity`` as well, so a self-referencing expression join counts as a
+    self reference too.
 
     Args:
         relationships: Edges forming one closed walk, in traversal order.
@@ -106,7 +112,11 @@ def _build_index(
     relationships: Iterable[SemanticRelationship],
     known_entities: Mapping[UUID, str],
 ) -> _GraphIndex:
-    """Index an explicit edge set by source alias, target alias and name."""
+    """Index an explicit edge set by source alias, target alias and name.
+
+    Only the values of ``known_entities`` are used: they are the aliases of the
+    known entities, and the ids are irrelevant to label resolution.
+    """
     known_aliases = frozenset(known_entities.values())
     adjacency: dict[str, list[tuple[str, SemanticRelationship]]] = {}
     unknown: set[tuple[str, str]] = set()
@@ -140,13 +150,16 @@ class GraphService:
     The service never reads ``SemanticRelationship.priority``: the caller picks
     the edge set and the service judges only that set. Priorities are local
     selection groups per ``(source entity, target entity)`` pair, so there is no
-    global layer to analyse; use ``etlalchemy.core.selection`` to build the edge
-    set for a worst-case check, the default (highest priority) selection, an
-    explicit selection, or a single priority level.
+    global layer to analyse; use ``etlalchemy.semantic.selection`` to build the
+    edge set for a worst-case check, the default (highest priority) selection,
+    an explicit selection, or a single priority level.
 
-    Labels come from ``known_entities`` when an entity id is mapped there.
+    Labels come from ``known_entities`` when an entity id is mapped there; only
+    the mapped aliases are used, the ids themselves are never compared.
     Entities missing from that mapping use their alias prefixed with ``?``, so
-    unknown labels never collide with known ones.
+    unknown labels never collide with known ones. An alias that already starts
+    with ``?`` is therefore indistinguishable from an unknown label, so entity
+    aliases should not start with that character.
 
     Adjacency lists are sorted by ``(target, relationship name)`` and nodes are
     sorted, so every result is deterministic regardless of input order.
@@ -161,8 +174,15 @@ class GraphService:
         relationships: Iterable[SemanticRelationship],
         known_entities: Mapping[UUID, str] | None = None,
     ) -> None:
-        """Index an explicit relationship set with optional display labels."""
-        self._index = _build_index(relationships, known_entities or {})
+        """Index an explicit relationship set with optional display labels.
+
+        Args:
+            relationships: Edges to analyse; the caller picks the set.
+            known_entities: Entity id to alias mapping. Only the mapped aliases
+                are used, so the ids never take part in label resolution.
+        """
+        known = {} if known_entities is None else known_entities
+        self._index = _build_index(relationships, known)
 
     @property
     def nodes(self) -> tuple[str, ...]:

@@ -201,14 +201,70 @@ def test_relationship_rejects_expression_join_collections() -> None:
     assert join.target_alias() == "patterns"
 
 
-def test_relationship_rejects_objects_that_are_not_conditions() -> None:
-    """Anything that does not implement JoinCondition is rejected."""
-    with pytest.raises(TypeError, match="JoinCondition"):
-        SemanticRelationship(name="broken", condition="orders.id = patterns.id")  # type: ignore[arg-type]
+def test_relationship_leaves_condition_validation_to_type_checking() -> None:
+    """A non-condition is a typing error, not a runtime isinstance check."""
+    broken = SemanticRelationship(
+        name="broken",
+        condition="orders.id = patterns.id",  # type: ignore[arg-type]
+    )
+
+    assert not broken.is_equi_join()
+    with pytest.raises(AttributeError):
+        broken.source_alias()
 
 
-def _model(*, direction: FilterDirection = FilterDirection.SINGLE) -> SemanticModel:
-    """Build a model joining orders to patterns through an expression."""
+def test_relationship_reports_whether_it_is_an_equi_join() -> None:
+    """Callers branch on is_equi_join instead of probing source with hasattr."""
+    orders, customers = _orders(), _customers()
+    equi = equi_join(
+        name="orders_customers",
+        source=_collection(orders, "customer_id"),
+        target=_collection(customers, "id"),
+    )
+    expression = expression_join(
+        name="orders_patterns",
+        source_entity="orders",
+        target_entity="patterns",
+        expression="regexp_like({source}.status, {target}.pattern)",
+    )
+
+    assert equi.is_equi_join() is True
+    assert expression.is_equi_join() is False
+    assert hasattr(expression, "source") is False
+
+
+def test_expression_join_rejects_malformed_placeholders() -> None:
+    """Unbalanced or doubled braces cannot leak into the compiled SQL."""
+    for expression in (
+        "regexp_like({source.status, {target}.pattern)",
+        "regexp_like({{source}}.status, {target}.pattern)",
+        "regexp_like({source}.status, {target}.pattern)}",
+        "regexp_like(source}, {target}.pattern)",
+    ):
+        with pytest.raises(ValueError, match="malformed placeholders"):
+            ExpressionJoin(
+                source_entity="orders",
+                target_entity="patterns",
+                expression=expression,
+            )
+
+
+def test_expression_join_rejects_format_modifiers() -> None:
+    """Conversions and format specs are not placeholders of the first version."""
+    with pytest.raises(ValueError, match="Unsupported placeholders"):
+        ExpressionJoin(
+            source_entity="orders",
+            target_entity="patterns",
+            expression="regexp_like({source!r}.status, {target}.pattern)",
+        )
+
+
+def _model() -> SemanticModel:
+    """Build a model joining orders to patterns through an expression.
+
+    The edge is ONE_TO_ONE so these join tests are not rejected by the fanout
+    check; MANY_TO_MANY detection has its own coverage in ``test_fanout.py``.
+    """
     orders = _orders()
     patterns = _patterns()
     registry = SemanticRegistry(
@@ -219,8 +275,7 @@ def _model(*, direction: FilterDirection = FilterDirection.SINGLE) -> SemanticMo
                 source_entity="orders",
                 target_entity="patterns",
                 expression="regexp_like({source}.status, {target}.pattern)",
-                cardinality=Cardinality.MANY_TO_MANY,
-                filter_direction=direction,
+                cardinality=Cardinality.ONE_TO_ONE,
             )
         ],
     )
@@ -243,13 +298,16 @@ def test_expression_join_compiles_into_the_on_clause() -> None:
     assert "REGEXP_LIKE(orders.status, patterns.pattern)" in on_clause
 
 
-def test_expression_join_rejects_bidirectional_filters() -> None:
+def test_expression_join_rejects_bidirectional_filters_at_construction() -> None:
     """The first version only supports SINGLE direction expression joins."""
-    model = _model(direction=FilterDirection.BOTH)
-    query = model.q.group_by("patterns.pattern").calculate("revenue")
-
     with pytest.raises(ValueError, match="only support filter_direction='SINGLE'"):
-        query.compile()
+        expression_join(
+            name="orders_patterns",
+            source_entity="orders",
+            target_entity="patterns",
+            expression="regexp_like({source}.status, {target}.pattern)",
+            filter_direction=FilterDirection.BOTH,
+        )
 
 
 def test_expression_join_warns_about_unbound_literals() -> None:
@@ -295,7 +353,10 @@ def test_equi_join_without_bind_literals_stays_silent() -> None:
         ),
     )
     model.registry.measures["revenue"] = Measure(
-        name="revenue", field=FieldRef(entity="orders", name="id")
+        name="revenue",
+        field=FieldRef(entity="orders", name="id"),
+        # MAX only warns about a fanout join.
+        aggregation="max",
     )
     query = model.q.group_by("customers.name").calculate("revenue")
 
@@ -311,7 +372,9 @@ def test_plain_relationship_still_joins_on_ids() -> None:
         name="m",
         registry=SemanticRegistry(
             entities={"a": a, "b": b},
-            relationships=[relationship("ab", a, b)],
+            # One b row to many a rows, so the measure on ``a`` sits on the
+            # many end and the join cannot fan it out.
+            relationships=[relationship("ab", b, a)],
         ),
     )
     model.registry.measures["count"] = Measure(

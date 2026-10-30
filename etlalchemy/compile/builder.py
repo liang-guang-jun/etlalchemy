@@ -70,6 +70,13 @@ def _join(step: JoinStep, context: CompileContext) -> exp.Join:
     )
 
 
+def _aggregate(name: str, column: exp.Column) -> exp.Expression:
+    """Build the aggregate expression for one measure aggregation."""
+    if name == "count_distinct":
+        return exp.Count(this=exp.Distinct(expressions=[column]))
+    return cast(exp.Expression, _AGGREGATIONS[name](this=column))
+
+
 def _where(conditions: list[exp.Expression]) -> exp.Expression | None:
     """Combine several conditions with AND."""
     if not conditions:
@@ -130,14 +137,14 @@ def build_select(plan: JoinPlan, context: CompileContext) -> exp.Select:
             )
         )
     for measure in plan.aggregations:
-        aggregate = _AGGREGATIONS[measure.measure.aggregation]
         query = query.select(
             exp.alias_(
-                aggregate(
-                    this=exp.column(
+                _aggregate(
+                    measure.measure.aggregation,
+                    exp.column(
                         measure.field.name,
                         table=context.sql_alias(measure.entity),
-                    )
+                    ),
                 ),
                 measure.output_alias,
             )
@@ -189,14 +196,14 @@ def build_cte(cte: CTEPlan, context: CompileContext) -> exp.CTE:
     for dimension in cte.null_dimensions:
         query = query.select(exp.alias_(exp.Null(), dimension.output_alias))
     for measure in cte.measures:
-        aggregate = _AGGREGATIONS[measure.measure.aggregation]
         query = query.select(
             exp.alias_(
-                aggregate(
-                    this=exp.column(
+                _aggregate(
+                    measure.measure.aggregation,
+                    exp.column(
                         measure.field.name,
                         table=context.sql_alias(measure.entity),
-                    )
+                    ),
                 ),
                 measure.output_alias,
             )

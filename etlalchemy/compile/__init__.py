@@ -14,7 +14,13 @@ First-version boundaries:
 * a fact entity that cannot reach a dimension is rejected by default
   (``unreachable_dimensions="error"``); with ``"null"`` the dimension is
   projected as NULL inside that CTE and reported in the compile report;
-* only ``sum``, ``count``, ``avg``, ``min`` and ``max`` aggregations exist;
+* only ``sum``, ``count``, ``count_distinct``, ``avg``, ``min`` and ``max``
+  aggregations exist;
+* a measure that a join can duplicate (fanout) is rejected for ``sum``,
+  ``count`` and ``avg``, only reported as a warning for ``min``, ``max`` and
+  ``count_distinct``, and always rejected for a MANY_TO_MANY edge;
+* ``include_report=True`` returns the ``CompileReport`` with the fanout
+  warnings and the join types of the plan;
 * predicates are limited to ``Comparison`` and ``Logical`` nodes; filters are
   pushed into the CTE that owns the referenced entities, an ``AND`` may span
   facts, but an ``OR`` spanning facts is rejected;

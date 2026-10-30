@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from etlalchemy.semantic.expression import FieldRef, RouteKey
 
 #: Aggregations the first-version compiler understands.
-SUPPORTED_AGGREGATIONS = ("avg", "count", "max", "min", "sum")
+SUPPORTED_AGGREGATIONS = ("avg", "count", "count_distinct", "max", "min", "sum")
 
 
 @dataclasses.dataclass
@@ -20,8 +20,12 @@ class Measure:
     measure does not bind, and pairs named by neither fall back to the highest
     priority, so an empty mapping means "use the highest priority everywhere".
 
-    ``aggregation`` is one of :data:`SUPPORTED_AGGREGATIONS`; it decides which
-    SQL aggregate the compiler emits.
+    ``aggregation`` is one of :data:`SUPPORTED_AGGREGATIONS` and defaults to
+    ``"sum"``. It decides which SQL aggregate the compiler emits and how a
+    fanout risk is handled: ``sum``, ``count`` and ``avg`` raise ``ValueError``
+    when a join can duplicate the measure rows, while ``min``, ``max`` and
+    ``count_distinct`` only record a warning because their value is stable
+    under duplication.
     """
 
     name: str

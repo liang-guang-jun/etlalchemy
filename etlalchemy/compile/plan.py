@@ -44,6 +44,10 @@ A predicate spanning several facts is split on ``AND``, while an ``OR`` spanning
 several facts is rejected because it cannot be pushed into a single CTE.
 Predicates referencing a shared dimension are pushed into every CTE that can
 reach that dimension.
+
+Fanout detection: for each measure, the compiler walks its join paths and marks
+reverse ONE_TO_MANY joins and MANY_TO_MANY joins. SUM, COUNT and AVG raise
+ValueError; MIN, MAX and COUNT DISTINCT only warn. MANY_TO_MANY always raises.
 """
 
 from __future__ import annotations
@@ -177,6 +181,28 @@ class _BfsTree:
 
     parent: dict[str, tuple[str, SemanticRelationship]]
     discovery: dict[str, int]
+
+
+@dataclasses.dataclass(frozen=True)
+class FanoutRisk:
+    """One fanout risk discovered on a measure's join path.
+
+    ``measure`` is the measure name, ``entity_alias`` the entity that owns it,
+    ``relationship`` the edge that can duplicate the measure rows, ``reason`` is
+    ``"one_to_many_reverse"`` when the measure sits on the one end of a
+    ONE_TO_MANY edge and ``"many_to_many"`` for a MANY_TO_MANY edge, and
+    ``severity`` is ``"error"`` or ``"warning"`` for the measure's aggregation.
+    """
+
+    measure: str
+    entity_alias: str
+    relationship: str
+    reason: str
+    severity: str
+
+
+#: Aggregations whose value changes when a join duplicates the measure rows.
+_STRICT_FANOUT_AGGREGATIONS = frozenset({"avg", "count", "sum"})
 
 
 def _append_unique(aliases: list[str], alias: str) -> None:
@@ -425,6 +451,90 @@ def choose_join_type(
             return "LEFT"
         return "INNER"
     return "LEFT"
+
+
+def _fanout_reason(
+    relationship: SemanticRelationship,
+    measure_side_alias: str,
+) -> str | None:
+    """Return why one edge can fan out a measure, or ``None`` when it cannot.
+
+    ``measure_side_alias`` is the endpoint of the edge that sits closer to the
+    measure's entity, so the path walks from the other endpoint towards it.
+    """
+    if relationship.cardinality is Cardinality.MANY_TO_MANY:
+        return "many_to_many"
+    if relationship.cardinality is not Cardinality.ONE_TO_MANY:
+        return None
+    if measure_side_alias == relationship.source_alias():
+        return "one_to_many_reverse"
+    return None
+
+
+def _fanout_severity(aggregation: str, reason: str) -> str:
+    """Return the severity of one fanout risk for a measure aggregation."""
+    if reason == "many_to_many":
+        return "error"
+    if aggregation in _STRICT_FANOUT_AGGREGATIONS:
+        return "error"
+    return "warning"
+
+
+def detect_fanout(
+    resolved: ResolvedQuery,
+    selected_edges: tuple[SemanticRelationship, ...],
+    registry: SemanticRegistry,
+) -> tuple[FanoutRisk, ...]:
+    """Return fanout risks for every measure in the query.
+
+    The check is static: it walks the join paths from each measure's entity to
+    the query dimensions and inspects every edge. An edge duplicates the
+    measure rows when it is MANY_TO_MANY, or when it is ONE_TO_MANY and the
+    measure's entity sits on its source (one) end. A measure on the target end
+    of a ONE_TO_MANY edge is not at risk, because that join does not multiply
+    its rows.
+
+    Args:
+        resolved: Query whose references are already resolved.
+        selected_edges: Relationships chosen by the routes.
+        registry: Model registry used to restrict the walk to known entities.
+
+    Returns:
+        One risk per (measure, relationship) pair, ordered by measure name and
+        then relationship name. The same relationship is reported once per
+        measure even when several paths use it.
+    """
+    known_aliases = {entity.alias for entity in registry.entities.values()}
+    targets = tuple(
+        dimension.entity.alias
+        for dimension in resolved.dimensions
+        if dimension.entity.alias in known_aliases
+    )
+
+    risks: dict[tuple[str, str], FanoutRisk] = {}
+    for measure in resolved.measures:
+        entity_alias = measure.entity.alias
+        tree = _bfs(entity_alias, selected_edges)
+        for target in targets:
+            node = target
+            while node != entity_alias and node in tree.parent:
+                parent_alias, relationship = tree.parent[node]
+                reason = _fanout_reason(relationship, parent_alias)
+                if reason is not None:
+                    risks.setdefault(
+                        (measure.ref.name, relationship.name),
+                        FanoutRisk(
+                            measure=measure.ref.name,
+                            entity_alias=entity_alias,
+                            relationship=relationship.name,
+                            reason=reason,
+                            severity=_fanout_severity(
+                                measure.measure.aggregation, reason
+                            ),
+                        ),
+                    )
+                node = parent_alias
+    return tuple(risks[key] for key in sorted(risks))
 
 
 def _ensure_single_fact_table(resolved: ResolvedQuery) -> None:
@@ -739,11 +849,13 @@ def plan_merge(
 
 __all__ = [
     "CTEPlan",
+    "FanoutRisk",
     "JoinPlan",
     "JoinStep",
     "MergePlan",
     "choose_base_entity",
     "choose_join_type",
+    "detect_fanout",
     "group_measures_by_entity",
     "plan_ctes",
     "plan_join_paths",

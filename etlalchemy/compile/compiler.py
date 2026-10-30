@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+from typing import Literal, overload
+
 from etlalchemy.compile.builder import build_merge, build_select
-from etlalchemy.compile.context import CompileContext
+from etlalchemy.compile.context import CompileContext, CompileReport
 from etlalchemy.compile.plan import (
+    FanoutRisk,
+    detect_fanout,
     group_measures_by_entity,
     plan_ctes,
     plan_joins,
@@ -17,7 +22,14 @@ from etlalchemy.semantic.join import ExpressionJoin
 from etlalchemy.semantic.model import SemanticModel
 from etlalchemy.semantic.relationship import SemanticRelationship
 
+#: Logger used for diagnostics that do not fit in the returned values.
+logger = logging.getLogger(__name__)
+
+#: Values accepted by ``unreachable_dimensions``.
 _UNREACHABLE_DIMENSIONS = frozenset({"error", "null"})
+
+#: Number of fanout errors spelled out in one error message.
+_MAX_REPORTED_FANOUT_ERRORS = 3
 
 
 def _warn_expression_joins(
@@ -35,6 +47,34 @@ def _warn_expression_joins(
             )
 
 
+def _fanout_error_message(risks: tuple[FanoutRisk, ...]) -> str:
+    """Return the error message describing the rejected fanout risks."""
+    described = [
+        f"Fanout detected for measure {risk.measure!r} on relationship "
+        f"{risk.relationship!r}: {risk.reason}. Pre-aggregate the measure or "
+        "change the aggregation."
+        for risk in risks[:_MAX_REPORTED_FANOUT_ERRORS]
+    ]
+    if len(risks) > _MAX_REPORTED_FANOUT_ERRORS:
+        described.append(f"and {len(risks) - _MAX_REPORTED_FANOUT_ERRORS} more")
+    return " ".join(described)
+
+
+def _report_fanout(risks: tuple[FanoutRisk, ...], context: CompileContext) -> None:
+    """Keep the warning-level fanout risks and log them."""
+    warnings = tuple(risk for risk in risks if risk.severity == "warning")
+    context.report.fanout_risks = warnings
+    for risk in warnings:
+        logger.warning(
+            "Fanout risk for measure %r on relationship %r: %s; the "
+            "aggregation is stable under duplicated rows",
+            risk.measure,
+            risk.relationship,
+            risk.reason,
+        )
+
+
+@overload
 def compile_query(
     query: Query,
     model: SemanticModel,
@@ -44,12 +84,46 @@ def compile_query(
     pretty: bool = True,
     unreachable_dimensions: str = "error",
     nulls_first: bool | None = None,
-) -> tuple[str, list[object] | dict[str, object]]:
+    include_report: Literal[False] = False,
+) -> tuple[str, list[object] | dict[str, object]]: ...
+
+
+@overload
+def compile_query(
+    query: Query,
+    model: SemanticModel,
+    dialect: str = "postgres",
+    *,
+    bind_literals: bool = False,
+    pretty: bool = True,
+    unreachable_dimensions: str = "error",
+    nulls_first: bool | None = None,
+    include_report: Literal[True],
+) -> tuple[str, list[object] | dict[str, object], CompileReport]: ...
+
+
+def compile_query(
+    query: Query,
+    model: SemanticModel,
+    dialect: str = "postgres",
+    *,
+    bind_literals: bool = False,
+    pretty: bool = True,
+    unreachable_dimensions: str = "error",
+    nulls_first: bool | None = None,
+    include_report: bool = False,
+) -> (
+    tuple[str, list[object] | dict[str, object]]
+    | tuple[str, list[object] | dict[str, object], CompileReport]
+):
     """Compile a semantic query into dialect SQL and parameters.
 
     The compilation resolves the query references, selects the relationships it
     traverses, plans one CTE per fact entity, and renders either a single
-    select or the CTE merge query for ``dialect``.
+    select or the CTE merge query for ``dialect``. Fanout detection runs right
+    after the edges are selected and before any plan is built, so a measure a
+    join can duplicate rejects the query before any SQL is generated; risks
+    that only warn are kept in the compile report.
 
     Args:
         query: Semantic query to compile.
@@ -74,17 +148,23 @@ def compile_query(
             placement identical across dialects, while ``None`` leaves it
             dialect dependent: ``ASC`` sorts NULLs last on Postgres but first on
             Databricks.
+        include_report: When True, return a third value with the
+            ``CompileReport`` of the compilation. When False (default) only the
+            SQL and the parameters are returned.
 
     Returns:
-        ``(sql, params)``. With ``bind_literals`` set, ``params`` is a dict
-        keyed by placeholder name (or a positional list when the dialect uses
-        positional placeholders); drivers that only accept positional
+        ``(sql, params)``, or ``(sql, params, report)`` when
+        ``include_report`` is set. With ``bind_literals`` set, ``params`` is a
+        dict keyed by placeholder name (or a positional list when the dialect
+        uses positional placeholders); drivers that only accept positional
         arguments need the caller to convert the dict themselves. Without
         binding, ``params`` is an empty list.
 
     Raises:
         ValueError: If ``unreachable_dimensions`` is not ``"error"`` or
-            ``"null"``, or a query reference cannot be planned.
+            ``"null"``, a query reference cannot be planned, or a measure can
+            be duplicated by a fanout join (``sum``, ``count``, ``avg`` and
+            every MANY_TO_MANY edge).
     """
     if unreachable_dimensions not in _UNREACHABLE_DIMENSIONS:
         raise ValueError(
@@ -104,12 +184,23 @@ def compile_query(
     edges = select_edges(resolved, context)
     _warn_expression_joins(edges, context)
 
+    risks = detect_fanout(resolved, edges, model.registry)
+    errors = tuple(risk for risk in risks if risk.severity == "error")
+    if errors:
+        raise ValueError(_fanout_error_message(errors))
+    _report_fanout(risks, context)
+
     grouped = group_measures_by_entity(resolved)
     if len(grouped) > 1:
         ctes = plan_ctes(
             resolved, grouped, edges, model.registry, unreachable_dimensions
         )
         context.report.cte_count = len(ctes)
+        context.report.join_types = tuple(
+            (step.relationship.name, step.join_type)
+            for cte in ctes
+            for step in cte.steps
+        )
         for cte in ctes:
             for dimension in cte.null_dimensions:
                 context.report.add_unreachable_dimension(
@@ -118,9 +209,16 @@ def compile_query(
                 )
         statement = build_merge(plan_merge(resolved, ctes), context)
     else:
-        statement = build_select(plan_joins(resolved, edges, context), context)
+        plan = plan_joins(resolved, edges, context)
+        context.report.join_types = tuple(
+            (step.relationship.name, step.join_type) for step in plan.steps
+        )
+        statement = build_select(plan, context)
 
     sql = statement.sql(dialect=dialect, pretty=pretty)
-    if not bind_literals:
-        return sql, []
-    return sql, dict(context.parameters)
+    params: list[object] | dict[str, object] = (
+        dict(context.parameters) if bind_literals else []
+    )
+    if include_report:
+        return sql, params, context.report
+    return sql, params

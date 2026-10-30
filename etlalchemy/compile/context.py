@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 from etlalchemy.semantic.expression import Query, RouteKey
 from etlalchemy.semantic.model import SemanticModel
 from etlalchemy.semantic.rowset import SemanticEntity
+
+if TYPE_CHECKING:
+    from etlalchemy.compile.plan import FanoutRisk
 
 
 @dataclasses.dataclass
@@ -15,14 +19,19 @@ class CompileReport:
     """Diagnostics collected while planning a query.
 
     ``warnings`` records decisions that changed the shape of the statement,
-    ``cte_count`` is the number of pre-aggregation CTEs the plan produced, and
+    ``cte_count`` is the number of pre-aggregation CTEs the plan produced,
     ``unreachable_dimension_warnings`` records dimensions that were replaced by
-    NULL because an entity could not aggregate by them.
+    NULL because an entity could not aggregate by them, ``join_types`` lists
+    the ``(relationship name, join type)`` pairs of the compiled joins, and
+    ``fanout_risks`` keeps the fanout risks that were downgraded to a warning
+    instead of rejecting the query.
     """
 
     warnings: list[str] = dataclasses.field(default_factory=list)
     cte_count: int = 0
     unreachable_dimension_warnings: tuple[str, ...] = ()
+    fanout_risks: tuple[FanoutRisk, ...] = ()
+    join_types: tuple[tuple[str, str], ...] = ()
 
     def add_warning(self, message: str) -> None:
         """Record one warning."""

@@ -141,6 +141,18 @@ def _model(*, cyclic: bool = False) -> SemanticModel:
     registry.measures["refund_total"] = Measure(
         name="refund_total", field=FieldRef(entity="refunds", name="amount")
     )
+    # MIN only warns about a fanout join, which keeps the join and CTE tests
+    # below focused on their own behaviour instead of on fanout detection.
+    registry.measures["min_total"] = Measure(
+        name="min_total",
+        field=FieldRef(entity="orders", name="total"),
+        aggregation="min",
+    )
+    registry.measures["min_refund"] = Measure(
+        name="min_refund",
+        field=FieldRef(entity="refunds", name="amount"),
+        aggregation="min",
+    )
     return SemanticModel(name="crm", registry=registry)
 
 
@@ -227,7 +239,9 @@ def test_compiles_a_left_join_from_the_base_to_the_many_side() -> None:
     """A fact-table base keeps all its rows when joining a dimension."""
     model = _model()
 
-    sql, _ = model.q.group_by("customers.region").calculate("revenue").compile()
+    # min_total only warns about the reverse one-to-many join, so the LEFT JOIN
+    # shape is still the behaviour under test here.
+    sql, _ = model.q.group_by("customers.region").calculate("min_total").compile()
 
     assert "LEFT JOIN crm.customers AS customers" in _squash(sql)
     assert "ON orders.customer_id = customers.id" in _squash(sql)
@@ -446,8 +460,8 @@ def test_multi_fact_query_builds_ctes_and_merges_them() -> None:
     model = _model()
     query = (
         model.q.group_by("customers.region")
-        .calculate("revenue", alias="total_revenue")
-        .calculate("refund_total", alias="total_refund")
+        .calculate("min_total", alias="total_revenue")
+        .calculate("min_refund", alias="total_refund")
         .order_by("total_revenue", descending=True)
     )
 
@@ -460,8 +474,8 @@ def test_multi_fact_query_builds_ctes_and_merges_them() -> None:
     assert "COALESCE(orders_agg.customers__region, refunds_agg.customers__region)" in (
         normalized
     )
-    assert "SUM(orders.total) AS total_revenue" in normalized
-    assert "SUM(refunds.amount) AS total_refund" in normalized
+    assert "MIN(orders.total) AS total_revenue" in normalized
+    assert "MIN(refunds.amount) AS total_refund" in normalized
     assert "ORDER BY total_revenue DESC" in normalized
 
 
@@ -537,7 +551,7 @@ def test_unsupported_measure_aggregation_is_rejected() -> None:
 def test_plan_only_joins_referenced_entities() -> None:
     """Relationships the query never uses stay out of the plan and the SQL."""
     model = _model()
-    query = model.q.group_by("orders.status", "customers.region").calculate("revenue")
+    query = model.q.group_by("orders.status", "customers.region").calculate("min_total")
     context, resolved = _resolved(model, query)
 
     plan = plan_joins(resolved, select_edges(resolved, context), context)
@@ -671,7 +685,11 @@ def _linked_model(
         relationships=[link],
     )
     registry.measures["revenue"] = Measure(
-        name="revenue", field=FieldRef(entity="orders", name="total")
+        name="revenue",
+        field=FieldRef(entity="orders", name="total"),
+        # MAX only warns about the fanout join, so this test stays about the
+        # filter direction forcing an INNER JOIN.
+        aggregation="max",
     )
     return SemanticModel(name="linked", registry=registry)
 
@@ -763,9 +781,8 @@ def test_multi_fact_cte_groups_by_every_dimension() -> None:
     model = _model()
     query = (
         model.q.group_by("orders.status", "customers.region")
-        .calculate("revenue")
-        .calculate("order_count")
-        .calculate("refund_total")
+        .calculate("min_total")
+        .calculate("min_refund")
     )
 
     sql, _ = query.compile(dialect="databricks")
@@ -777,9 +794,8 @@ def test_multi_fact_cte_groups_by_every_dimension() -> None:
     assert [item.alias for item in statement.expressions] == [
         "orders__status",
         "customers__region",
-        "revenue",
-        "order_count",
-        "refund_total",
+        "min_total",
+        "min_refund",
     ]
 
 
@@ -857,8 +873,8 @@ def test_filters_are_pushed_into_the_matching_cte() -> None:
     model = _model()
     query = (
         model.q.group_by("customers.region")
-        .calculate("revenue")
-        .calculate("refund_total")
+        .calculate("min_total")
+        .calculate("min_refund")
         .filter("orders.status = 'paid'")
         .filter("refunds.reason = 'damaged'")
     )
@@ -946,8 +962,8 @@ def test_or_filter_spanning_facts_is_rejected() -> None:
     model = _model()
     query = (
         model.q.group_by("customers.region")
-        .calculate("revenue")
-        .calculate("refund_total")
+        .calculate("min_total")
+        .calculate("min_refund")
         .filter("orders.status = 'paid' OR refunds.reason = 'damaged'")
     )
 
@@ -960,8 +976,8 @@ def test_full_outer_join_uses_null_safe_equality() -> None:
     model = _model()
     query = (
         model.q.group_by("customers.region")
-        .calculate("revenue")
-        .calculate("refund_total")
+        .calculate("min_total")
+        .calculate("min_refund")
     )
 
     sql, _ = query.compile(dialect="databricks")

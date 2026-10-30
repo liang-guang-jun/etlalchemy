@@ -223,6 +223,7 @@ def test_compile_passes_the_bound_model(
         pretty: bool = True,
         unreachable_dimensions: str = "error",
         nulls_first: bool | None = None,
+        include_report: bool = False,
     ) -> tuple[str, list[object]]:
         calls.append((query, bound_model, dialect, bind_literals, pretty))
         return "SELECT 1", []

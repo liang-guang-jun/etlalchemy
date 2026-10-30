@@ -28,11 +28,13 @@ from __future__ import annotations
 
 import dataclasses
 import re
+import typing
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 if TYPE_CHECKING:
+    from etlalchemy.compile.context import CompileReport
     from etlalchemy.semantic.model import SemanticModel
 
 #: Key of one relationship route: ``(source alias, target alias)``.
@@ -277,6 +279,7 @@ class Query:
             raise ValueError(f"limit must be non-negative, got {n}")
         return dataclasses.replace(self, row_limit=n)
 
+    @overload
     def compile(
         self,
         dialect: str = "postgres",
@@ -285,7 +288,34 @@ class Query:
         pretty: bool = True,
         unreachable_dimensions: str = "error",
         nulls_first: bool | None = None,
-    ) -> tuple[str, list[object] | dict[str, object]]:
+        include_report: typing.Literal[False] = False,
+    ) -> tuple[str, list[object] | dict[str, object]]: ...
+
+    @overload
+    def compile(
+        self,
+        dialect: str = "postgres",
+        *,
+        bind_literals: bool = False,
+        pretty: bool = True,
+        unreachable_dimensions: str = "error",
+        nulls_first: bool | None = None,
+        include_report: typing.Literal[True],
+    ) -> tuple[str, list[object] | dict[str, object], CompileReport]: ...
+
+    def compile(
+        self,
+        dialect: str = "postgres",
+        *,
+        bind_literals: bool = False,
+        pretty: bool = True,
+        unreachable_dimensions: str = "error",
+        nulls_first: bool | None = None,
+        include_report: bool = False,
+    ) -> (
+        tuple[str, list[object] | dict[str, object]]
+        | tuple[str, list[object] | dict[str, object], CompileReport]
+    ):
         """Compile this query against its bound model into SQL and parameters.
 
         The compiler is imported lazily so the core layer does not pull in the
@@ -316,17 +346,24 @@ class Query:
                 Postgres but first on Databricks. The placement is a compile
                 option, not part of the query: ``order_by`` keeps taking only a
                 reference and a ``descending`` flag.
+            include_report: When True, the compiled ``CompileReport`` is
+                returned as a third value, which carries the fanout risks that
+                only warrant a warning and the join types of the plan. When
+                False (default) only the SQL and the parameters are returned,
+                and warning-level fanout risks go to the module logger.
 
         Returns:
-            ``(sql, params)``. When ``bind_literals`` is True and the dialect
-            uses named placeholders, ``params`` is a dict keyed by placeholder
-            name; when the dialect uses positional placeholders, ``params`` is
-            a list in placeholder order. When ``bind_literals`` is False,
-            ``params`` is an empty list.
+            ``(sql, params)``, or ``(sql, params, report)`` when
+            ``include_report`` is set. When ``bind_literals`` is True and the
+            dialect uses named placeholders, ``params`` is a dict keyed by
+            placeholder name; when the dialect uses positional placeholders,
+            ``params`` is a list in placeholder order. When ``bind_literals``
+            is False, ``params`` is an empty list.
 
         Raises:
-            ValueError: If the query is not bound to a model, or if
-                ``unreachable_dimensions`` is not ``"error"`` or ``"null"``.
+            ValueError: If the query is not bound to a model, if
+                ``unreachable_dimensions`` is not ``"error"`` or ``"null"``,
+                or if a measure can be duplicated by a fanout join.
         """
         if self.model is None:
             raise ValueError(
@@ -335,6 +372,17 @@ class Query:
             )
         from etlalchemy.compile.compiler import compile_query
 
+        if include_report:
+            return compile_query(
+                self,
+                self.model,
+                dialect=dialect,
+                bind_literals=bind_literals,
+                pretty=pretty,
+                unreachable_dimensions=unreachable_dimensions,
+                nulls_first=nulls_first,
+                include_report=True,
+            )
         return compile_query(
             self,
             self.model,
@@ -343,6 +391,7 @@ class Query:
             pretty=pretty,
             unreachable_dimensions=unreachable_dimensions,
             nulls_first=nulls_first,
+            include_report=False,
         )
 
 
