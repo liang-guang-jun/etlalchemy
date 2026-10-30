@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 import pytest
-from etlalchemy.core import (
+from etlalchemy.semantic import (
     GraphService,
     SemanticEntity,
     SemanticRegistry,

@@ -20,8 +20,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from uuid import UUID
 
-from etlalchemy.core.relationship import Cardinality, SemanticRelationship
-from etlalchemy.core.rowset import SemanticEntity
+from etlalchemy.semantic.relationship import Cardinality, SemanticRelationship
 
 
 class CycleKind(StrEnum):
@@ -74,7 +73,7 @@ def _classify(relationships: Sequence[SemanticRelationship]) -> CycleKind:
     """
     if len(relationships) == 1:
         only = relationships[0]
-        if only.source.entity.id != only.target.entity.id:
+        if only.source_alias() != only.target_alias():
             raise ValueError(
                 f"A single non-self relationship cannot form a cycle: {only.name!r}"
             )
@@ -96,29 +95,27 @@ class _GraphIndex:
     unknown: tuple[tuple[str, str], ...]
 
 
-def _resolve_label(
-    entity: SemanticEntity, known_entities: Mapping[UUID, str]
-) -> tuple[str, bool]:
-    """Return the display label of an entity and whether it is known."""
-    label = known_entities.get(entity.id)
-    if label is not None:
-        return label, True
-    return f"{UNKNOWN_LABEL_PREFIX}{entity.alias}", False
+def _resolve_label(alias: str, known_aliases: frozenset[str]) -> tuple[str, bool]:
+    """Return the display label of an entity alias and whether it is known."""
+    if alias in known_aliases:
+        return alias, True
+    return f"{UNKNOWN_LABEL_PREFIX}{alias}", False
 
 
 def _build_index(
     relationships: Iterable[SemanticRelationship],
     known_entities: Mapping[UUID, str],
 ) -> _GraphIndex:
-    """Index an explicit edge set by source label, target label and name."""
+    """Index an explicit edge set by source alias, target alias and name."""
+    known_aliases = frozenset(known_entities.values())
     adjacency: dict[str, list[tuple[str, SemanticRelationship]]] = {}
     unknown: set[tuple[str, str]] = set()
     for relationship in relationships:
         source, source_known = _resolve_label(
-            relationship.source.entity, known_entities
+            relationship.source_alias(), known_aliases
         )
         target, target_known = _resolve_label(
-            relationship.target.entity, known_entities
+            relationship.target_alias(), known_aliases
         )
         if not source_known:
             unknown.add((relationship.name, source))

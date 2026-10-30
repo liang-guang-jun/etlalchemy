@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from etlalchemy.core import (
+from etlalchemy.semantic import (
     FieldRef,
     Measure,
     Query,

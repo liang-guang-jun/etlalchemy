@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from etlalchemy.core import (
+from etlalchemy.semantic import (
     SemanticEntity,
     SemanticModel,
     SemanticRegistry,
@@ -80,8 +80,8 @@ def test_graph_accepts_an_explicit_selection() -> None:
     assert [item.name for item in cycles[0].relationships] == ["ab_lo", "ba"]
 
 
-def test_graph_labels_use_registry_keys() -> None:
-    """Registered names label the nodes, not the entity aliases."""
+def test_graph_labels_use_entity_aliases() -> None:
+    """Entity aliases label the nodes; registry keys only mark them known."""
     a, b = entity("a_alias"), entity("b_alias")
     registry = _registry(
         (a, b),
@@ -91,7 +91,7 @@ def test_graph_labels_use_registry_keys() -> None:
 
     model = SemanticModel(name="m", registry=registry)
 
-    assert model.graph().nodes == ("a", "b")
+    assert model.graph().nodes == ("a_alias", "b_alias")
 
 
 def test_graph_marks_entities_missing_from_the_registry() -> None:

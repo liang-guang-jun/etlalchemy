@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid5
 
-from etlalchemy.core import (
+from etlalchemy.semantic import (
     Cardinality,
     Field,
     FieldCollection,
@@ -13,6 +13,7 @@ from etlalchemy.core import (
     SemanticEntity,
     SemanticRelationship,
     String,
+    equi_join,
 )
 
 NAMESPACE = UUID("00000000-0000-0000-0000-000000000000")
@@ -36,7 +37,7 @@ def relationship(
     priority: int = 0,
 ) -> SemanticRelationship:
     """Build a single-column relationship between two entities."""
-    return SemanticRelationship(
+    return equi_join(
         name=name,
         source=FieldCollection(source, (source.relation.fields["id"],)),
         target=FieldCollection(target, (target.relation.fields["id"],)),

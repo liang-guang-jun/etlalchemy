@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from etlalchemy.core.expression import Query, RouteKey
-from etlalchemy.core.measure import Measure
+from etlalchemy.semantic.expression import Query, RouteKey
+from etlalchemy.semantic.measure import Measure
 
 
 def effective_routes(measure: Measure, query: Query) -> Mapping[RouteKey, int]:

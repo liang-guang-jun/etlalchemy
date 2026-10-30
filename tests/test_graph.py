@@ -5,14 +5,14 @@ from __future__ import annotations
 from typing import Any, cast
 
 import pytest
-from etlalchemy.core import (
+from etlalchemy.semantic import (
     Cardinality,
     Cycle,
     CycleKind,
     GraphService,
     RelationshipCycleError,
 )
-from etlalchemy.core.graph import _classify
+from etlalchemy.semantic.graph import _classify
 
 from builders import entity, known, relationship
 
@@ -132,15 +132,15 @@ def test_unknown_entities_get_prefixed_label() -> None:
     assert service.edges == (("a", "?ghost", "gone"),)
 
 
-def test_unknown_label_does_not_collide_with_known_label() -> None:
-    """An unknown entity sharing an alias with a known label stays distinct."""
+def test_entities_are_identified_by_alias() -> None:
+    """Two entities sharing an alias collapse into one node."""
     listed = entity("orders")
     twin = entity("orders", id_text="orders-twin")
 
     service = GraphService([relationship("link", twin, listed)], known(listed))
 
-    assert service.nodes == ("?orders", "orders")
-    assert service.edges == (("?orders", "orders", "link"),)
+    assert service.nodes == ("orders",)
+    assert service.edges == (("orders", "orders", "link"),)
 
 
 def test_validate_reports_unknown_entities() -> None:

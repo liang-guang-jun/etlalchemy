@@ -25,30 +25,59 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from uuid import UUID
 
-from etlalchemy.core.model import SemanticRegistry
-from etlalchemy.core.relationship import SemanticRelationship
+from etlalchemy.semantic.model import SemanticRegistry
+from etlalchemy.semantic.relationship import SemanticRelationship
 
 #: Key of one local selection group: ``(source entity id, target entity id)``.
 EntityIdPair = tuple[UUID, UUID]
 
 
-def _pair(relationship: SemanticRelationship) -> EntityIdPair:
+def _entity_id(
+    registry: SemanticRegistry,
+    alias: str,
+    relationship: SemanticRelationship,
+) -> UUID:
+    """Return the id of the entity registered under an alias.
+
+    Raises:
+        ValueError: If no registered entity uses the alias.
+    """
+    entity = registry.entities.get(alias)
+    if entity is None:
+        entity = next(
+            (item for item in registry.entities.values() if item.alias == alias),
+            None,
+        )
+    if entity is None:
+        raise ValueError(
+            f"Unknown entity alias {alias!r} in relationship {relationship.name!r}"
+        )
+    return entity.id
+
+
+def _pair(
+    relationship: SemanticRelationship, registry: SemanticRegistry
+) -> EntityIdPair:
     """Return the selection group an edge belongs to."""
-    return (relationship.source.entity.id, relationship.target.entity.id)
+    return (
+        _entity_id(registry, relationship.source_alias(), relationship),
+        _entity_id(registry, relationship.target_alias(), relationship),
+    )
 
 
 def _sort_key(
-    relationship: SemanticRelationship,
+    relationship: SemanticRelationship, registry: SemanticRegistry
 ) -> tuple[UUID, UUID, int, str]:
     """Return a deterministic ordering key for a relationship."""
-    return (*_pair(relationship), relationship.priority, relationship.name)
+    return (*_pair(relationship, registry), relationship.priority, relationship.name)
 
 
 def _ordered(
     relationships: Iterable[SemanticRelationship],
+    registry: SemanticRegistry,
 ) -> tuple[SemanticRelationship, ...]:
     """Return the relationships as a deterministically ordered tuple."""
-    return tuple(sorted(relationships, key=_sort_key))
+    return tuple(sorted(relationships, key=lambda item: _sort_key(item, registry)))
 
 
 def _grouped(
@@ -57,7 +86,7 @@ def _grouped(
     """Group the registry relationships by their selection pair."""
     groups: dict[EntityIdPair, list[SemanticRelationship]] = {}
     for relationship in registry.relationships:
-        groups.setdefault(_pair(relationship), []).append(relationship)
+        groups.setdefault(_pair(relationship, registry), []).append(relationship)
     return groups
 
 
@@ -95,7 +124,7 @@ def all_edges(registry: SemanticRegistry) -> tuple[SemanticRelationship, ...]:
       cyclic;
     * an acyclic result proves that no per-pair selection can be cyclic.
     """
-    return _ordered(registry.relationships)
+    return _ordered(registry.relationships, registry)
 
 
 def highest_priority_edges(
@@ -108,8 +137,11 @@ def highest_priority_edges(
     result stays deterministic.
     """
     return _ordered(
-        _preferred(candidates, highest=True)
-        for candidates in _grouped(registry).values()
+        (
+            _preferred(candidates, highest=True)
+            for candidates in _grouped(registry).values()
+        ),
+        registry,
     )
 
 
@@ -125,8 +157,11 @@ def lowest_priority_edges(
     :func:`highest_priority_edges`.
     """
     return _ordered(
-        _preferred(candidates, highest=False)
-        for candidates in _grouped(registry).values()
+        (
+            _preferred(candidates, highest=False)
+            for candidates in _grouped(registry).values()
+        ),
+        registry,
     )
 
 
@@ -158,7 +193,7 @@ def edges_for_selection(
                 f"No relationship from {pair[0]} to {pair[1]} at priority {wanted}"
             )
         chosen.append(max(matches, key=lambda item: item.name))
-    return _ordered(chosen)
+    return _ordered(chosen, registry)
 
 
 def edges_by_priority(
@@ -176,4 +211,6 @@ def edges_by_priority(
     groups: dict[int, list[SemanticRelationship]] = {}
     for relationship in registry.relationships:
         groups.setdefault(relationship.priority, []).append(relationship)
-    return {priority: _ordered(groups[priority]) for priority in sorted(groups)}
+    return {
+        priority: _ordered(groups[priority], registry) for priority in sorted(groups)
+    }

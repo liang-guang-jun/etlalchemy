@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from uuid import UUID
 
-from etlalchemy.core.types import DataType
+from etlalchemy.semantic.types import DataType
 
 
 @dataclass(frozen=True)

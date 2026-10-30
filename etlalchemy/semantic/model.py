@@ -14,11 +14,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from etlalchemy.core.expression import Query
-from etlalchemy.core.graph import GraphService
-from etlalchemy.core.measure import Measure
-from etlalchemy.core.relationship import SemanticRelationship
-from etlalchemy.core.rowset import SemanticEntity
+from etlalchemy.semantic.expression import Query
+from etlalchemy.semantic.graph import GraphService
+from etlalchemy.semantic.measure import Measure
+from etlalchemy.semantic.relationship import SemanticRelationship
+from etlalchemy.semantic.rowset import SemanticEntity
 
 
 @dataclass
@@ -81,7 +81,7 @@ class SemanticModel:
             else relationships
         )
         known_entities = {
-            entity.id: name for name, entity in self.registry.entities.items()
+            entity.id: entity.alias for entity in self.registry.entities.values()
         }
         return GraphService(edges, known_entities=known_entities)
 
@@ -115,9 +115,9 @@ class _ModelQueryStarters:
         """Keep the model every started query is bound to."""
         self._model = model
 
-    def group_by(self, *refs: str) -> Query:
+    def group_by(self, *refs: str, alias: str | None = None) -> Query:
         """Start a query on this model with the given dimensions."""
-        return Query(model=self._model).group_by(*refs)
+        return Query(model=self._model).group_by(*refs, alias=alias)
 
     def calculate(self, measure: str, alias: str | None = None) -> Query:
         """Start a query on this model with the given measure."""
@@ -127,9 +127,9 @@ class _ModelQueryStarters:
         """Start a query on this model with the given predicates."""
         return Query(model=self._model).filter(*predicates)
 
-    def order_by(self, ref: str) -> Query:
+    def order_by(self, ref: str, descending: bool = False) -> Query:
         """Start a query on this model with the given ordering term."""
-        return Query(model=self._model).order_by(ref)
+        return Query(model=self._model).order_by(ref, descending)
 
     def route(self, source: str, target: str, priority: int) -> Query:
         """Start a query on this model with a fixed route."""

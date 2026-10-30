@@ -11,7 +11,9 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
-dependencies = []
+dependencies = [
+    "sqlglot>=30.26.0",
+]
 
 [dependency-groups]
 dev = [
