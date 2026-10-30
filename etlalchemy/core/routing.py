@@ -4,17 +4,19 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from etlalchemy.core.expression import Pair, Query
+from etlalchemy.core.expression import Query, RouteKey
 from etlalchemy.core.measure import Measure
 
 
-def effective_routes(measure: Measure, query: Query) -> Mapping[Pair, int]:
+def effective_routes(measure: Measure, query: Query) -> Mapping[RouteKey, int]:
     """Merge measure routes over query routes.
 
     The measure's routes are authoritative: a pair bound by the measure always
     keeps the measure's priority. The query's routes only fill in pairs the
-    measure does not bind.
+    measure does not bind. Neither argument is modified, and pairs named by
+    neither mapping are absent from the result, which tells the compilation
+    layer to fall back to the highest priority.
     """
-    merged: dict[Pair, int] = dict(query.routes)
+    merged: dict[RouteKey, int] = dict(query.routes)
     merged.update(measure.routes)
     return merged

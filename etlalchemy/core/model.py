@@ -1,8 +1,11 @@
-"""Model container and merge entry point.
+"""Model container, query starters and merge entry point.
 
-SemanticRegistry holds the entities and relationships of a model.
-SemanticModel is the addable unit exposed to callers. Merge behavior is not
-implemented yet.
+``SemanticRegistry`` holds the entities, relationships and measures of a model.
+``SemanticModel`` is the addable unit exposed to callers; its ``q`` property
+returns query starters bound to that model, so ``query.compile()`` works on the
+result. The module-level ``q`` in ``etlalchemy.core.expression`` starts
+unbound queries instead, which cannot be compiled until they are rebuilt from
+``model.q``. Merge behavior is not implemented yet.
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from etlalchemy.core.expression import Query
 from etlalchemy.core.graph import GraphService
 from etlalchemy.core.measure import Measure
 from etlalchemy.core.relationship import SemanticRelationship
@@ -81,6 +85,16 @@ class SemanticModel:
         }
         return GraphService(edges, known_entities=known_entities)
 
+    @property
+    def q(self) -> _ModelQueryStarters:
+        """Return query starters bound to this model.
+
+        Queries started here carry ``model`` set to this model, so
+        ``query.compile()`` can resolve entities and measures. The module-level
+        ``q`` only builds model-independent queries.
+        """
+        return _ModelQueryStarters(self)
+
     def __add__(self, other: SemanticModel) -> SemanticModel:
         """Merge two models; behavior is not implemented yet."""
         raise NotImplementedError
@@ -92,3 +106,35 @@ class SemanticModel:
     ) -> SemanticModel:
         """Merge two models with the given strategy; behavior is not implemented yet."""
         raise NotImplementedError
+
+
+class _ModelQueryStarters:
+    """Query starters bound to one model."""
+
+    def __init__(self, model: SemanticModel) -> None:
+        """Keep the model every started query is bound to."""
+        self._model = model
+
+    def group_by(self, *refs: str) -> Query:
+        """Start a query on this model with the given dimensions."""
+        return Query(model=self._model).group_by(*refs)
+
+    def calculate(self, measure: str, alias: str | None = None) -> Query:
+        """Start a query on this model with the given measure."""
+        return Query(model=self._model).calculate(measure, alias)
+
+    def filter(self, *predicates: str) -> Query:
+        """Start a query on this model with the given predicates."""
+        return Query(model=self._model).filter(*predicates)
+
+    def order_by(self, ref: str) -> Query:
+        """Start a query on this model with the given ordering term."""
+        return Query(model=self._model).order_by(ref)
+
+    def route(self, source: str, target: str, priority: int) -> Query:
+        """Start a query on this model with a fixed route."""
+        return Query(model=self._model).route(source, target, priority)
+
+    def limit(self, n: int) -> Query:
+        """Start a query on this model with a row limit."""
+        return Query(model=self._model).limit(n)

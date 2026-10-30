@@ -25,12 +25,14 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from uuid import UUID
 
-from etlalchemy.core.expression import Pair
 from etlalchemy.core.model import SemanticRegistry
 from etlalchemy.core.relationship import SemanticRelationship
 
+#: Key of one local selection group: ``(source entity id, target entity id)``.
+EntityIdPair = tuple[UUID, UUID]
 
-def _pair(relationship: SemanticRelationship) -> Pair:
+
+def _pair(relationship: SemanticRelationship) -> EntityIdPair:
     """Return the selection group an edge belongs to."""
     return (relationship.source.entity.id, relationship.target.entity.id)
 
@@ -49,9 +51,11 @@ def _ordered(
     return tuple(sorted(relationships, key=_sort_key))
 
 
-def _grouped(registry: SemanticRegistry) -> dict[Pair, list[SemanticRelationship]]:
+def _grouped(
+    registry: SemanticRegistry,
+) -> dict[EntityIdPair, list[SemanticRelationship]]:
     """Group the registry relationships by their selection pair."""
-    groups: dict[Pair, list[SemanticRelationship]] = {}
+    groups: dict[EntityIdPair, list[SemanticRelationship]] = {}
     for relationship in registry.relationships:
         groups.setdefault(_pair(relationship), []).append(relationship)
     return groups
@@ -128,7 +132,7 @@ def lowest_priority_edges(
 
 def edges_for_selection(
     registry: SemanticRegistry,
-    selection: Mapping[Pair, int],
+    selection: Mapping[EntityIdPair, int],
 ) -> tuple[SemanticRelationship, ...]:
     """Return one relationship per node pair, following an explicit selection.
 

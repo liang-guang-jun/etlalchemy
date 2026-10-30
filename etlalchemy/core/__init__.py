@@ -1,12 +1,15 @@
 """Public API for the semantic core layer."""
 
 from etlalchemy.core.expression import (
+    Comparison,
     FieldRef,
-    Filter,
+    Literal,
+    Logical,
     MeasureRef,
     OrderBy,
-    Pair,
+    Projection,
     Query,
+    q,
 )
 from etlalchemy.core.graph import (
     Cycle,
@@ -56,6 +59,7 @@ __all__ = [
     "Binary",
     "Boolean",
     "Cardinality",
+    "Comparison",
     "Cycle",
     "CycleKind",
     "DataType",
@@ -64,18 +68,19 @@ __all__ = [
     "Field",
     "FieldCollection",
     "FieldRef",
-    "Filter",
     "FilterDirection",
     "Float",
     "GraphService",
     "Integer",
     "Json",
+    "Literal",
+    "Logical",
     "Materialization",
     "Measure",
     "MeasureRef",
     "MergeStrategy",
     "OrderBy",
-    "Pair",
+    "Projection",
     "Query",
     "RelationshipCycleError",
     "Rowset",
@@ -92,4 +97,5 @@ __all__ = [
     "effective_routes",
     "highest_priority_edges",
     "lowest_priority_edges",
+    "q",
 ]

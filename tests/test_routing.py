@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from uuid import UUID, uuid4
-
 from etlalchemy.core import (
     FieldRef,
     Measure,
@@ -12,12 +10,12 @@ from etlalchemy.core import (
     effective_routes,
 )
 
-PAIR: tuple[UUID, UUID] = (uuid4(), uuid4())
-OTHER_PAIR: tuple[UUID, UUID] = (uuid4(), uuid4())
+PAIR: tuple[str, str] = ("employees", "departments")
+OTHER_PAIR: tuple[str, str] = ("assignments", "projects")
 
 
 def _measure(
-    name: str = "total", routes: dict[tuple[UUID, UUID], int] | None = None
+    name: str = "total", routes: dict[tuple[str, str], int] | None = None
 ) -> Measure:
     """Build a measure over one field with the given default routes."""
     return Measure(
