@@ -447,40 +447,43 @@ def test_no_nulls_clause_is_rendered_by_default() -> None:
         assert "NULLS LAST" not in sql
 
 
+def _order_null_placements(sql: str, dialect: str) -> list[bool | None]:
+    """Return the NULL placement of every ORDER BY term of a statement."""
+    order = sqlglot.parse_one(sql, read=dialect).find(exp.Order)
+    assert order is not None
+    return [term.args.get("nulls_first") for term in order.expressions]
+
+
 def test_nulls_first_false_renders_nulls_last_for_both_directions(
     squash: Callable[[str], str],
 ) -> None:
-    """nulls_first=False puts NULLS LAST on ASC and DESC terms alike."""
+    """nulls_first=False sorts NULLs last on ASC and DESC terms alike."""
     model = _model()
     query = _ordered_query(model)
 
-    sql = query.compile(nulls_first=False).sql
-    normalized = squash(sql)
-
-    assert "order_status NULLS LAST" in normalized
-    assert "revenue DESC NULLS LAST" in normalized
-    assert "NULLS FIRST" not in normalized
-
-    # An explicit placement is identical on every dialect.
+    # The formatter omits a NULLS clause that repeats the dialect default, so
+    # the placement is asserted on the parsed statement rather than on the text.
     databricks_sql = query.compile(dialect="databricks", nulls_first=False).sql
-    assert (
-        squash(databricks_sql).split("ORDER BY")[1] == normalized.split("ORDER BY")[1]
-    )
+    postgres_sql = query.compile(dialect="postgres", nulls_first=False).sql
+
+    assert _order_null_placements(databricks_sql, "databricks") == [False, False]
+    assert _order_null_placements(postgres_sql, "postgres") == [False, False]
+    assert "NULLS FIRST" not in squash(databricks_sql)
 
 
 def test_nulls_first_true_renders_nulls_first_for_both_directions(
     squash: Callable[[str], str],
 ) -> None:
-    """nulls_first=True puts NULLS FIRST on ASC and DESC terms alike."""
+    """nulls_first=True sorts NULLs first on ASC and DESC terms alike."""
     model = _model()
     query = _ordered_query(model)
 
-    sql = query.compile(nulls_first=True).sql
-    normalized = squash(sql)
+    databricks_sql = query.compile(dialect="databricks", nulls_first=True).sql
+    postgres_sql = query.compile(dialect="postgres", nulls_first=True).sql
 
-    assert "order_status NULLS FIRST" in normalized
-    assert "revenue DESC NULLS FIRST" in normalized
-    assert "NULLS LAST" not in normalized
+    assert _order_null_placements(databricks_sql, "databricks") == [True, True]
+    assert _order_null_placements(postgres_sql, "postgres") == [True, True]
+    assert "NULLS LAST" not in squash(databricks_sql)
 
 
 def test_default_null_placement_depends_on_the_dialect(
@@ -1363,3 +1366,33 @@ def test_time_grain_on_a_non_time_field_is_rejected() -> None:
     assert events[0].phase == "resolve"
     assert events[0].entity == "orders"
     assert events[0].dimension == "status"
+
+
+def test_compile_applies_the_identifier_case_and_indent_width() -> None:
+    """The formatting options reach the rendered statement."""
+    model = _model()
+    query = model.q.group_by("orders.status", alias="order_status").calculate(
+        "revenue"
+    )
+
+    compiled = query.compile(identifier_case="upper", indent_width=2)
+
+    assert "FROM CRM.ORDERS AS ORDERS" in compiled.sql
+    assert "\n  SUM(ORDERS.TOTAL) AS REVENUE" in compiled.sql
+    assert compiled.identifier_case == "upper"
+    assert compiled.indent_width == 2
+
+
+def test_compile_defaults_to_preserving_identifiers() -> None:
+    """The default formatting keeps the casing and a four-space indent."""
+    model = _model()
+    query = model.q.group_by("orders.status", alias="order_status").calculate(
+        "revenue"
+    )
+
+    compiled = query.compile()
+
+    assert "FROM crm.orders AS orders" in compiled.sql
+    assert "\n    SUM(orders.total) AS revenue" in compiled.sql
+    assert compiled.identifier_case == "preserve"
+    assert compiled.indent_width == 4

@@ -265,7 +265,7 @@ def test_compile_passes_the_bound_model(
 ) -> None:
     """query.compile forwards itself, its model, the dialect and the flags."""
     model = SemanticModel(name="crm")
-    calls: list[tuple[Query, SemanticModel, str, bool, bool]] = []
+    calls: list[tuple[Query, SemanticModel, str, bool, bool, str, int]] = []
 
     def fake_compile(
         query: Query,
@@ -276,8 +276,20 @@ def test_compile_passes_the_bound_model(
         pretty: bool = True,
         unreachable_dimensions: str = "error",
         nulls_first: bool | None = None,
+        identifier_case: str = "preserve",
+        indent_width: int = 4,
     ) -> CompiledQuery:
-        calls.append((query, bound_model, dialect, inline_literals, pretty))
+        calls.append(
+            (
+                query,
+                bound_model,
+                dialect,
+                inline_literals,
+                pretty,
+                identifier_case,
+                indent_width,
+            )
+        )
         return CompiledQuery(
             sql="SELECT 1",
             params=[],
@@ -285,15 +297,25 @@ def test_compile_passes_the_bound_model(
             dialect=dialect,
             inline_literals=inline_literals,
             nulls_first=nulls_first,
+            identifier_case=identifier_case,
+            indent_width=indent_width,
         )
 
     monkeypatch.setattr("etlalchemy.compile.compiler.compile_query", fake_compile)
     query = model.q.group_by("orders.status")
 
-    compiled = query.compile(dialect="duckdb", inline_literals=False, pretty=False)
+    compiled = query.compile(
+        dialect="duckdb",
+        inline_literals=False,
+        pretty=False,
+        identifier_case="upper",
+        indent_width=2,
+    )
 
     assert (compiled.sql, compiled.params) == ("SELECT 1", [])
-    assert calls == [(query, model, "duckdb", False, False)]
+    assert compiled.identifier_case == "upper"
+    assert compiled.indent_width == 2
+    assert calls == [(query, model, "duckdb", False, False, "upper", 2)]
 
 
 def test_query_equality_ignores_the_model() -> None:

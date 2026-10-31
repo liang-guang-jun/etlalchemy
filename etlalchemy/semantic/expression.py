@@ -361,6 +361,8 @@ class Query:
         pretty: bool = True,
         unreachable_dimensions: str = "error",
         nulls_first: bool | None = None,
+        identifier_case: str = "preserve",
+        indent_width: int = 4,
     ) -> CompiledQuery:
         """Compile this query against its bound model into a compiled result.
 
@@ -392,17 +394,23 @@ class Query:
                 Postgres but first on Databricks. The placement is a compile
                 option, not part of the query: ``order_by`` keeps taking only a
                 reference and a ``descending`` flag.
+            identifier_case: ``"preserve"`` (default) keeps the casing of the
+                compiled identifiers, ``"upper"`` uppercases every identifier
+                and ``"lower"`` lowercases it.
+            indent_width: Number of spaces per indentation level of the
+                formatted SQL; defaults to 4.
 
         Returns:
             A :class:`~etlalchemy.compile.result.CompiledQuery` holding the
             SQL text, the parameters, the compile report, the dialect, the
-            literal mode and the NULL placement used. Read them through
-            ``.sql``, ``.params`` and ``.report``.
+            literal mode, the NULL placement and the formatting options used.
+            Read them through ``.sql``, ``.params`` and ``.report``.
 
         Raises:
             ValueError: If the query is not bound to a model, if
                 ``unreachable_dimensions`` is not ``"error"`` or ``"null"``,
-                or if a measure can be duplicated by a fanout join.
+                if ``identifier_case`` is unknown, or if a measure can be
+                duplicated by a fanout join.
         """
         if self.model is None:
             raise ValueError(
@@ -419,6 +427,8 @@ class Query:
             pretty=pretty,
             unreachable_dimensions=unreachable_dimensions,
             nulls_first=nulls_first,
+            identifier_case=identifier_case,
+            indent_width=indent_width,
         )
 
 

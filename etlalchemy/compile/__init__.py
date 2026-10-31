@@ -5,7 +5,8 @@ picks the relationships the query traverses, plans its joins, builds a sqlglot
 AST and renders it for the requested dialect. It returns a
 :class:`~etlalchemy.compile.result.CompiledQuery`; read the statement through
 ``compiled.sql``, the parameters through ``compiled.params`` and the
-diagnostics through ``compiled.report``.
+diagnostics through ``compiled.report``. ``format_sql(sql)`` applies the same
+layout rules to any SQL text and does not need a semantic model.
 
 Compile options:
 
@@ -82,6 +83,7 @@ from ``events`` and ``join_decisions``.
 """
 
 from etlalchemy.compile.compiler import compile_query
+from etlalchemy.compile.formatting import format_sql
 from etlalchemy.compile.report import (
     BOTH_FILTER_FORCES_INNER,
     EXPRESSION_JOIN_UNBOUND,
@@ -109,4 +111,5 @@ __all__ = [
     "CompiledQuery",
     "JoinDecision",
     "compile_query",
+    "format_sql",
 ]

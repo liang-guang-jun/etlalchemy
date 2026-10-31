@@ -21,6 +21,8 @@ class CompiledQuery:
         inline_literals: Whether literals were inlined into the SQL.
         nulls_first: NULL placement used in ORDER BY terms, or None
             when no NULLS clause was rendered.
+        identifier_case: Identifier casing applied to the rendered SQL.
+        indent_width: Number of spaces per indentation level of the SQL.
     """
 
     sql: str
@@ -29,6 +31,8 @@ class CompiledQuery:
     dialect: str
     inline_literals: bool
     nulls_first: bool | None
+    identifier_case: str = "preserve"
+    indent_width: int = 4
 
 
 __all__ = ["CompiledQuery"]

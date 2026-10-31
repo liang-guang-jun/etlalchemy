@@ -7,6 +7,7 @@ from collections.abc import Iterable
 
 from etlalchemy.compile.builder import build_merge, build_select
 from etlalchemy.compile.context import CompileContext
+from etlalchemy.compile.formatting import format_sql
 from etlalchemy.compile.plan import (
     FanoutRisk,
     JoinStep,
@@ -148,6 +149,8 @@ def compile_query(
     pretty: bool = True,
     unreachable_dimensions: str = "error",
     nulls_first: bool | None = None,
+    identifier_case: str = "preserve",
+    indent_width: int = 4,
 ) -> CompiledQuery:
     """Compile a semantic query into SQL, parameters and a report.
 
@@ -183,14 +186,20 @@ def compile_query(
             placement identical across dialects, while ``None`` leaves it
             dialect dependent: ``ASC`` sorts NULLs last on Postgres but first on
             Databricks.
+        identifier_case: ``"preserve"`` (default) keeps the casing of the
+            compiled identifiers, ``"upper"`` uppercases every identifier and
+            ``"lower"`` lowercases it.
+        indent_width: Number of spaces per indentation level of the formatted
+            SQL; defaults to 4.
 
     Returns:
         A :class:`~etlalchemy.compile.result.CompiledQuery` holding the SQL
         text, the parameters, the compile report, the dialect, the literal
-        mode and the NULL placement used. With ``inline_literals`` False,
-        ``params`` is a dict keyed by placeholder name (drivers that only
-        accept positional arguments need the caller to convert the dict
-        themselves); with ``inline_literals`` True it is an empty list.
+        mode, the NULL placement and the formatting options used. With
+        ``inline_literals`` False, ``params`` is a dict keyed by placeholder
+        name (drivers that only accept positional arguments need the caller to
+        convert the dict themselves); with ``inline_literals`` True it is an
+        empty list.
 
     Raises:
         ValueError: If ``unreachable_dimensions`` is not ``"error"`` or
@@ -267,15 +276,24 @@ def compile_query(
         context.report.join_decisions = _join_decisions(plan.steps)
         statement = build_select(plan, context)
 
-    sql = statement.sql(dialect=dialect, pretty=pretty)
+    raw_sql = statement.sql(dialect=dialect)
+    final_sql = format_sql(
+        raw_sql,
+        dialect=dialect,
+        identifier_case=identifier_case,
+        indent_width=indent_width,
+        pretty=pretty,
+    )
     params: list[object] | dict[str, object] = (
         [] if inline_literals else dict(context.parameters)
     )
     return CompiledQuery(
-        sql=sql,
+        sql=final_sql,
         params=params,
         report=context.report,
         dialect=dialect,
         inline_literals=inline_literals,
         nulls_first=nulls_first,
+        identifier_case=identifier_case,
+        indent_width=indent_width,
     )
