@@ -218,8 +218,8 @@ def test_compiles_without_group_by_when_there_are_no_dimensions() -> None:
     assert "SUM(orders.total) AS revenue" in _squash(sql)
 
 
-def test_compiles_an_inner_join_when_the_base_is_on_the_many_side() -> None:
-    """The measure entity is the base, so the join walks back with INNER."""
+def test_compiles_a_left_join_when_the_base_is_on_the_many_side() -> None:
+    """A ONE_TO_MANY edge joins with LEFT from either end."""
     model = _model()
 
     sql, _ = model.q.group_by("orders.status").calculate("customer_count").compile()
@@ -228,9 +228,9 @@ def test_compiles_an_inner_join_when_the_base_is_on_the_many_side() -> None:
     joins = statement.args.get("joins")
     assert joins is not None
     assert len(joins) == 1
-    # The base (customers) is the target end of the ONE_TO_MANY edge, so orders
-    # is joined with INNER and unmatched orders are dropped by design.
-    assert "INNER JOIN crm.orders AS orders" in _squash(sql)
+    # The edge is ONE_TO_MANY in the SINGLE direction, so it is LEFT even though
+    # the base sits on the many end: unmatched orders keep NULL customers.
+    assert "LEFT JOIN crm.orders AS orders" in _squash(sql)
     assert "ON orders.customer_id = customers.id" in _squash(sql)
     assert "COUNT(customers.id) AS customer_count" in _squash(sql)
 
@@ -630,7 +630,7 @@ def test_plan_join_paths_rejects_unreachable_entities() -> None:
 
 
 def test_choose_join_type_rules() -> None:
-    """Join types follow cardinality, direction and filter propagation."""
+    """Join types follow cardinality and filter propagation only."""
     orders = _entity("orders", "id", "customer_id")
     customers = _entity("customers", "id")
     forward = _relationship("fwd", orders, "customer_id", customers, "id")
@@ -639,23 +639,30 @@ def test_choose_join_type_rules() -> None:
     many_to_many.cardinality = Cardinality.MANY_TO_MANY
     both_ways = _relationship("both", orders, "customer_id", customers, "id")
     both_ways.filter_direction = FilterDirection.BOTH
+    one_to_one = _relationship("one", orders, "customer_id", customers, "id")
+    one_to_one.cardinality = Cardinality.ONE_TO_ONE
 
+    # ONE_TO_MANY joins with LEFT whichever end holds the base entity.
     assert choose_join_type(forward, "orders") == "LEFT"
-    assert choose_join_type(forward, "customers") == "INNER"
+    assert choose_join_type(forward, "customers") == "LEFT"
     assert choose_join_type(backwards, "customers") == "LEFT"
-    assert choose_join_type(many_to_many, "orders") == "INNER"
+    assert choose_join_type(backwards, "orders") == "LEFT"
+    # BOTH and MANY_TO_MANY stay INNER, ONE_TO_ONE stays LEFT.
     assert choose_join_type(both_ways, "orders") == "INNER"
+    assert choose_join_type(both_ways, "customers") == "INNER"
+    assert choose_join_type(many_to_many, "orders") == "INNER"
+    assert choose_join_type(one_to_one, "orders") == "LEFT"
 
 
-def test_join_type_is_inner_when_base_is_target() -> None:
-    """Base on the target end of a ONE_TO_MANY edge uses INNER JOIN."""
+def test_one_to_many_always_uses_left() -> None:
+    """The base end no longer changes the join type of a ONE_TO_MANY edge."""
     users = _entity("users", "id")
     orders = _entity("orders", "id", "user_id")
     users_to_orders = _relationship("users_to_orders", users, "id", orders, "user_id")
 
-    # Rows on the target end without a matching source row are dropped on
-    # purpose; reversing the relationship keeps them instead.
-    assert choose_join_type(users_to_orders, "orders") == "INNER"
+    # Every row of the many end survives a missing match, from either base.
+    assert choose_join_type(users_to_orders, "users") == "LEFT"
+    assert choose_join_type(users_to_orders, "orders") == "LEFT"
 
 
 def test_filter_references_trigger_a_join() -> None:
@@ -729,6 +736,22 @@ def test_both_direction_filter_on_target_forces_inner_join() -> None:
     assert step.semi_join is False
     assert any("BOTH" in warning for warning in context.report.warnings)
     assert "INNER JOIN crm.customers" in _squash(query.compile()[0])
+
+
+def test_left_join_filtered_on_target_warns_about_inner_semantics() -> None:
+    """A LEFT join plus a target-side filter behaves like an INNER join."""
+    model = _model()
+    query = (
+        model.q.group_by("customers.region")
+        .calculate("min_total")
+        .filter("customers.region = 'APAC'")
+    )
+
+    sql, _, report = query.compile(include_report=True)
+
+    # The plan keeps the LEFT JOIN and only reports the semantic downgrade.
+    assert "LEFT JOIN crm.customers" in _squash(sql)
+    assert any("behaves like an INNER JOIN" in warning for warning in report.warnings)
 
 
 def test_route_pair_without_relationship_is_rejected() -> None:

@@ -5,19 +5,25 @@ Join planning keeps the statement minimal and explicit:
 * only entities the query references — its dimensions, measures, filter fields
   and ordering aliases — are joined, so relationships selected by the routes
   but never used by the query never reach the SQL;
-* join types follow cardinality and filter direction: a one-to-many edge that
-  starts at the base keeps every base row with a LEFT JOIN, the same edge
-  walked from the many side joins with INNER to avoid fan-out, many-to-many
-  edges join with INNER, and edges that propagate filters in both directions
-  join with INNER because filters can arrive from either side;
+* join types follow cardinality and filter direction: a one-to-many edge joins
+  with LEFT so every row of its many end survives a missing match, many-to-many
+  edges join with INNER, edges that propagate filters in both directions join
+  with INNER because filters can arrive from either side, and one-to-one edges
+  join with LEFT;
 * an entity that is unreachable from the base through the selected
   relationships raises ``ValueError`` instead of being silently dropped.
 
-Join type selection: when the base entity sits on the target end of a
-ONE_TO_MANY relationship, the join uses INNER JOIN, so rows on the target end
-without a matching source row are dropped. This is intentional. If a query
-needs to keep unmatched target rows, put the source entity as the base or
-reverse the relationship direction.
+Join type selection: a ONE_TO_MANY relationship joins with LEFT in the SINGLE
+filter direction, whichever end holds the base entity, so a fact row without a
+matching dimension row is kept and its dimension columns come out NULL. BOTH
+edges join with INNER because filters can arrive from either side, MANY_TO_MANY
+edges join with INNER because they multiply rows, and ONE_TO_ONE edges join with
+LEFT so a missing match never truncates the base.
+
+A LEFT JOIN whose target side is also filtered degenerates into an INNER JOIN:
+the unmatched rows produce NULL target columns, which the filter then drops. The
+first version keeps the LEFT JOIN but records a warning in the ``CompileReport``
+saying the result behaves like an INNER JOIN.
 
 The plan never reads a relationship's key columns: it only needs the entity
 aliases of each edge, so equi joins and expression joins are planned alike. The
@@ -62,7 +68,7 @@ from etlalchemy.compile.resolve import (
     ResolvedQuery,
     predicate_fields,
 )
-from etlalchemy.semantic.expression import Logical, OrderBy, Predicate
+from etlalchemy.semantic.expression import FieldComparison, Logical, OrderBy, Predicate
 from etlalchemy.semantic.join import ExpressionJoin
 from etlalchemy.semantic.model import SemanticRegistry
 from etlalchemy.semantic.relationship import (
@@ -88,8 +94,8 @@ class JoinStep:
     walk went from the relationship target to its source, and ``join_type`` is
     ``"INNER"`` or ``"LEFT"``.
 
-    join_type is INNER when the base entity sits on the target end of a
-    ONE_TO_MANY relationship, which drops unmatched target rows by design.
+    join_type is LEFT for a ONE_TO_MANY edge in the SINGLE direction, INNER for
+    BOTH and MANY_TO_MANY edges, and LEFT for a ONE_TO_ONE edge.
 
     ``filter_pushed`` is set when the edge propagates filters in one direction
     only (``SINGLE``) and every filter on this edge sits on its source side, so
@@ -433,22 +439,26 @@ def choose_join_type(
 
     The rules are deliberately conservative:
 
+    * a one-to-many edge joins with LEFT in the SINGLE direction, whatever end
+      holds the base entity: the rows of the many end must survive a missing
+      match, and their dimension columns become NULL instead;
     * an edge that propagates filters in both directions joins with INNER,
       because filters can arrive from either side and a LEFT JOIN would keep
       rows that should have been filtered out;
     * many-to-many edges join with INNER as well; such a join can multiply
       rows, so the caller has to confirm the resulting grain;
-    * a one-to-many edge that starts at the base uses LEFT to keep every base
-      row, while walking it from the many side uses INNER to avoid fan-out;
-    * one-to-one edges use LEFT so the base entity is never truncated.
+    * one-to-one edges join with LEFT so the base entity is never truncated.
+
+    ``base_alias`` is accepted for callers that already know the base entity
+    and is reserved for future use: a semi-join rewrite or an INNER rewrite
+    when a WHERE clause filters the target side would need it. The current
+    rules do not branch on it.
     """
+    # Reserved for a future semi-join / target-filter rewrite.
+    _ = base_alias
     if relationship.filter_direction is FilterDirection.BOTH:
         return "INNER"
     if relationship.cardinality is Cardinality.MANY_TO_MANY:
-        return "INNER"
-    if relationship.cardinality is Cardinality.ONE_TO_MANY:
-        if relationship.source_alias() == base_alias:
-            return "LEFT"
         return "INNER"
     return "LEFT"
 
@@ -582,9 +592,12 @@ def _build_steps(
     """Turn the needed BFS edges into join steps.
 
     Each step records whether its filters may be pushed into the source side
-    and whether a semi-join would be needed. A ``BOTH`` edge with a filter on
-    the target side is joined with INNER and reported as a warning, because
-    ``LEFT JOIN`` plus that predicate would silently behave like an INNER JOIN.
+    and whether a semi-join would be needed. Two target-side asymmetries are
+    reported: a ``BOTH`` edge with a target-side filter is joined with INNER
+    (the filter forces it), and a LEFT step whose target entity is filtered in
+    the WHERE clause keeps its LEFT type but behaves like an INNER JOIN,
+    because the filter drops the rows the LEFT JOIN kept with NULL target
+    columns.
     """
     needed = _needed_edges(base_alias, referenced, tree)
     filtered = _filter_aliases(resolved)
@@ -600,6 +613,11 @@ def _build_steps(
             context.report.add_warning(
                 "filter_direction BOTH with a target-side filter on relationship "
                 f"{relationship.name!r} forces an INNER JOIN"
+            )
+        if step.join_type == "LEFT" and step.target_alias in filtered:
+            context.report.add_warning(
+                f"LEFT JOIN on relationship {relationship.name!r} is filtered on "
+                "its target side; the result behaves like an INNER JOIN"
             )
         steps.append(dataclasses.replace(step, filter_pushed=filter_pushed))
     return tuple(steps)
@@ -683,9 +701,15 @@ def _assign_predicate(
 ) -> list[tuple[str, Predicate]]:
     """Assign one predicate to the CTEs that can evaluate it.
 
+    ``In``, ``Between``, ``IsNull``, ``Like`` and ``Not`` are assigned by the
+    entities their fields reference, exactly like ``Comparison``. A
+    ``FieldComparison`` needs both sides inside one CTE. An ``AND`` is split
+    over its operands, while an ``OR`` must fit a single CTE.
+
     Raises:
-        ValueError: If an ``OR`` spans several facts or the predicate cannot be
-            pushed into any CTE.
+        ValueError: If an ``OR`` spans several facts, a field-to-field
+            comparison spans several facts, or the predicate cannot be pushed
+            into any CTE.
     """
     entities = {ref.entity for ref in predicate_fields(predicate)}
     accepting = [
@@ -693,6 +717,11 @@ def _assign_predicate(
     ]
     if accepting:
         return [(alias, predicate) for alias in accepting]
+
+    if isinstance(predicate, FieldComparison):
+        raise ValueError(
+            "field-to-field comparison across fact entities is not supported"
+        )
 
     if isinstance(predicate, Logical) and predicate.operator == "AND":
         assigned: list[tuple[str, Predicate]] = []
@@ -733,6 +762,24 @@ def _push_filters(
     return pushed
 
 
+def _reject_cross_cte_counts(resolved: ResolvedQuery) -> None:
+    """Reject ``count`` and ``count_distinct`` measures in a multi-fact query.
+
+    Neither can be merged from per-fact CTEs yet: the same value may be counted
+    once per CTE, and ``COUNT(*)`` cannot simply be summed either.
+
+    Raises:
+        ValueError: If any measure of the query uses ``count`` or
+            ``count_distinct``.
+    """
+    for measure in resolved.measures:
+        aggregation = measure.measure.aggregation
+        if aggregation in {"count", "count_distinct"}:
+            raise ValueError(
+                f"{aggregation} across multiple fact entities is not supported yet"
+            )
+
+
 def plan_ctes(
     resolved: ResolvedQuery,
     grouped: dict[str, list[ResolvedMeasure]],
@@ -754,14 +801,19 @@ def plan_ctes(
         One CTE plan per fact entity, in the order the measures appear.
 
     Raises:
-        ValueError: If ``unreachable_dimensions`` is invalid, or a dimension is
-            unreachable from a fact entity in ``"error"`` mode.
+        ValueError: If ``unreachable_dimensions`` is invalid, a dimension is
+            unreachable from a fact entity in ``"error"`` mode, or the query
+            has a ``count`` or ``count_distinct`` measure while spanning
+            several fact entities.
     """
     if unreachable_dimensions not in _UNREACHABLE_DIMENSIONS:
         raise ValueError(
             "unreachable_dimensions must be 'error' or 'null', "
             f"got {unreachable_dimensions!r}"
         )
+
+    if len(grouped) > 1:
+        _reject_cross_cte_counts(resolved)
 
     partial: list[_CTEParts] = []
     for entity_alias, measures in grouped.items():

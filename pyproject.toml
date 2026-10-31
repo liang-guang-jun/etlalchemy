@@ -12,6 +12,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "lark>=1.1",
     "sqlglot>=30.26.0",
 ]
 

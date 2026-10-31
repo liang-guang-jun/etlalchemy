@@ -8,9 +8,15 @@ from uuid import UUID
 
 from etlalchemy.compile.context import CompileContext
 from etlalchemy.semantic.expression import (
+    Between,
     Comparison,
+    FieldComparison,
     FieldRef,
+    In,
+    IsNull,
+    Like,
     MeasureRef,
+    Not,
     OrderBy,
     Predicate,
     Query,
@@ -37,13 +43,18 @@ class ResolvedDimension:
 
 @dataclasses.dataclass(frozen=True)
 class ResolvedMeasure:
-    """A measure bound to its definition, entity, field and effective routes."""
+    """A measure bound to its definition, entity, fields and effective routes.
+
+    ``field`` is the single column of the aggregation and is ``None`` for a
+    multi-column ``count_distinct``, which carries its columns in ``fields``.
+    """
 
     ref: MeasureRef
     measure: Measure
     entity: SemanticEntity
-    field: Field
+    field: Field | None
     routes: Mapping[RouteKey, int]
+    fields: tuple[Field, ...] = ()
 
     @property
     def output_alias(self) -> str:
@@ -91,9 +102,21 @@ def resolve_field(
 
 
 def predicate_fields(predicate: Predicate) -> tuple[FieldRef, ...]:
-    """Return every field reference used inside a predicate."""
+    """Return every field reference used inside a predicate.
+
+    The walk covers the whole node set: ``Not`` recurses into its operand,
+    ``Logical`` unions its operands, ``FieldComparison`` contributes both
+    sides, and ``In``, ``Between``, ``IsNull`` and ``Like`` contribute their
+    single field.
+    """
     if isinstance(predicate, Comparison):
         return (predicate.field,)
+    if isinstance(predicate, FieldComparison):
+        return (predicate.left, predicate.right)
+    if isinstance(predicate, (In, Between, IsNull, Like)):
+        return (predicate.field,)
+    if isinstance(predicate, Not):
+        return predicate_fields(predicate.operand)
     return tuple(
         ref for operand in predicate.operands for ref in predicate_fields(operand)
     )
@@ -129,6 +152,49 @@ def _validate_order_terms(
             )
 
 
+def _resolve_measure_fields(
+    definition: Measure,
+    context: CompileContext,
+) -> tuple[SemanticEntity, Field | None, tuple[Field, ...]]:
+    """Resolve the entity and columns of one measure definition.
+
+    A single-field measure anchors on its ``field``; a multi-column
+    ``count_distinct`` anchors on the first entry of ``fields``; a ``COUNT(*)``
+    measure has no field at all and anchors on its ``entity`` hint.
+
+    Raises:
+        ValueError: If a field is unknown, if the ``fields`` of a measure
+            belong to several entities, or if a ``COUNT(*)`` measure does not
+            name its entity.
+    """
+    anchor = definition.field
+    if anchor is None and definition.fields:
+        anchor = definition.fields[0]
+    if anchor is not None:
+        entity_alias = anchor.entity
+    elif definition.entity is not None:
+        entity_alias = definition.entity
+    else:
+        raise ValueError(
+            "COUNT(*) measures must set entity when field and fields are empty"
+        )
+    entity = resolve_entity(entity_alias, context)
+
+    for ref in definition.fields:
+        if ref.entity != entity_alias:
+            raise ValueError(
+                "count_distinct fields must belong to the same entity as the measure"
+            )
+
+    field = (
+        None
+        if definition.field is None
+        else resolve_field(definition.field, context)[1]
+    )
+    fields = tuple(resolve_field(ref, context)[1] for ref in definition.fields)
+    return entity, field, fields
+
+
 def resolve_query(query: Query, context: CompileContext) -> ResolvedQuery:
     """Resolve the references of a query and record its effective routes.
 
@@ -147,16 +213,19 @@ def resolve_query(query: Query, context: CompileContext) -> ResolvedQuery:
         definition = context.model.registry.measures.get(measure_ref.name)
         if definition is None:
             raise ValueError(f"Unknown measure {measure_ref.name!r}")
-        entity, field = resolve_field(definition.field, context)
+        measure_entity, measure_field, measure_fields = _resolve_measure_fields(
+            definition, context
+        )
         routes = effective_routes(definition, query)
         context.measure_routes[measure_ref.name] = routes
         measures.append(
             ResolvedMeasure(
                 ref=measure_ref,
                 measure=definition,
-                entity=entity,
-                field=field,
+                entity=measure_entity,
+                field=measure_field,
                 routes=routes,
+                fields=measure_fields,
             )
         )
 

@@ -177,11 +177,21 @@ def test_invalid_inputs_raise_value_error() -> None:
     with pytest.raises(ValueError, match="alias.field"):
         q.group_by("status")
 
-    with pytest.raises(ValueError, match="Unsupported predicate"):
-        q.filter("orders.status LIKE 'paid'")
+    with pytest.raises(ValueError, match="use alias.field"):
+        q.filter("status = 'paid'")
 
-    with pytest.raises(ValueError, match="Mixed logical operators"):
-        q.filter("orders.status = 'paid' AND orders.total > 1 OR orders.id = 2")
+    with pytest.raises(ValueError, match="Invalid filter at position"):
+        q.filter("orders.status = ")
+
+
+def test_filter_accepts_like_and_mixed_logical_operators() -> None:
+    """The DSL nests operators, so LIKE and mixed AND/OR are valid now."""
+    predicate = q.filter(
+        "orders.status LIKE 'p%' OR orders.status = 'paid' AND orders.total > 1"
+    ).filters[0]
+
+    assert isinstance(predicate, Logical)
+    assert predicate.operator == "OR"
 
 
 def test_module_level_starters_build_unbound_queries() -> None:

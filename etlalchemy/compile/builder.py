@@ -18,20 +18,13 @@ from typing import Any, cast
 from sqlglot import condition as sql_condition
 from sqlglot import exp
 
+from etlalchemy.compile.aggregate import build_aggregation
 from etlalchemy.compile.context import CompileContext
 from etlalchemy.compile.plan import CTEPlan, JoinPlan, JoinStep, MergePlan
 from etlalchemy.compile.predicate import build_condition
 from etlalchemy.compile.resolve import ResolvedDimension
 from etlalchemy.semantic.expression import OrderBy
 from etlalchemy.semantic.rowset import SemanticEntity
-
-_AGGREGATIONS: dict[str, Any] = {
-    "avg": exp.Avg,
-    "count": exp.Count,
-    "max": exp.Max,
-    "min": exp.Min,
-    "sum": exp.Sum,
-}
 
 #: NULLS suffix appended to an ORDER BY term for each ``nulls_first`` value.
 _NULLS_SUFFIX: dict[bool | None, str] = {
@@ -68,13 +61,6 @@ def _join(step: JoinStep, context: CompileContext) -> exp.Join:
         kind=step.join_type,
         on=_join_condition(step, context),
     )
-
-
-def _aggregate(name: str, column: exp.Column) -> exp.Expression:
-    """Build the aggregate expression for one measure aggregation."""
-    if name == "count_distinct":
-        return exp.Count(this=exp.Distinct(expressions=[column]))
-    return cast(exp.Expression, _AGGREGATIONS[name](this=column))
 
 
 def _where(conditions: list[exp.Expression]) -> exp.Expression | None:
@@ -138,16 +124,7 @@ def build_select(plan: JoinPlan, context: CompileContext) -> exp.Select:
         )
     for measure in plan.aggregations:
         query = query.select(
-            exp.alias_(
-                _aggregate(
-                    measure.measure.aggregation,
-                    exp.column(
-                        measure.field.name,
-                        table=context.sql_alias(measure.entity),
-                    ),
-                ),
-                measure.output_alias,
-            )
+            exp.alias_(build_aggregation(measure, context), measure.output_alias)
         )
 
     query = query.from_(_table(plan.base_entity, context.sql_alias(plan.base_entity)))
@@ -197,16 +174,7 @@ def build_cte(cte: CTEPlan, context: CompileContext) -> exp.CTE:
         query = query.select(exp.alias_(exp.Null(), dimension.output_alias))
     for measure in cte.measures:
         query = query.select(
-            exp.alias_(
-                _aggregate(
-                    measure.measure.aggregation,
-                    exp.column(
-                        measure.field.name,
-                        table=context.sql_alias(measure.entity),
-                    ),
-                ),
-                measure.output_alias,
-            )
+            exp.alias_(build_aggregation(measure, context), measure.output_alias)
         )
 
     query = query.from_(_table(base_entity, context.sql_alias(base_entity)))

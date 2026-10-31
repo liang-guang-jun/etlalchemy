@@ -119,6 +119,17 @@ def test_reverse_one_to_many_only_warns_for_min() -> None:
     assert [risk.severity for risk in risks] == ["warning"]
 
 
+def test_reverse_one_to_many_only_warns_for_count_distinct() -> None:
+    """COUNT DISTINCT only warns because duplicates do not change its value."""
+    model = _model(aggregation="count_distinct")
+    query = model.q.group_by("members.id").calculate("team_total")
+
+    risks = _risks(model, query)
+
+    assert [risk.reason for risk in risks] == ["one_to_many_reverse"]
+    assert [risk.severity for risk in risks] == ["warning"]
+
+
 def test_many_to_many_is_an_error_for_count_distinct() -> None:
     """MANY_TO_MANY always rejects, whatever the aggregation."""
     orders = entity("orders")

@@ -6,7 +6,7 @@ by relationship routes; graph-level selection keeps using entity id pairs.
 
 There are two ways to start a query:
 
-* ``model.q`` (a :class:`~etlalchemy.core.model.SemanticModel` property) binds
+* ``model.q`` (a :class:`~etlalchemy.semantic.model.SemanticModel` property) binds
   the query to that model, so ``query.compile()`` can resolve entities and
   measures.
 * The module-level ``q`` starts an unbound query, e.g.
@@ -22,12 +22,28 @@ Output aliases: a dimension is renamed with ``group_by(..., alias="...")`` and
 a measure with ``calculate(..., alias="...")``. Without an explicit alias a
 dimension is named ``"entity__name"`` and a measure keeps its name. Ordering
 terms (``order_by``) match these output aliases.
+
+Filter DSL: ``filter`` takes SQL-like boolean expressions that
+:mod:`etlalchemy.semantic.filter_parser` turns into the nodes below. Fields are
+fully qualified as ``alias.field``; literals are single- or double-quoted
+strings (doubled quotes escape), numbers, ``TRUE``, ``FALSE`` and ``NULL``;
+keywords are case-insensitive and ``AND`` binds tighter than ``OR``. Supported
+forms:
+
+* comparisons ``field = value`` with ``=``, ``!=``, ``<>``, ``<``, ``<=``, ``>``
+  and ``>=``, where the right side is a literal or another field;
+* ``IN (...)`` and ``NOT IN (...)``;
+* ``BETWEEN low AND high`` and ``NOT BETWEEN low AND high``;
+* ``IS NULL`` and ``IS NOT NULL``;
+* ``LIKE pattern`` and ``NOT LIKE pattern``;
+* ``NOT expr`` and parentheses around any expression.
+
+Function calls and arithmetic inside filters are not supported.
 """
 
 from __future__ import annotations
 
 import dataclasses
-import re
 import typing
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -41,11 +57,17 @@ if TYPE_CHECKING:
 RouteKey = tuple[str, str]
 
 __all__ = [
+    "Between",
     "Comparison",
+    "FieldComparison",
     "FieldRef",
+    "In",
+    "IsNull",
+    "Like",
     "Literal",
     "Logical",
     "MeasureRef",
+    "Not",
     "OrderBy",
     "Predicate",
     "Projection",
@@ -93,14 +115,68 @@ class Comparison:
 
 
 @dataclass(frozen=True)
+class FieldComparison:
+    """A predicate comparing two fields, for example ``a.x > b.y``."""
+
+    left: FieldRef
+    operator: str
+    right: FieldRef
+
+
+@dataclass(frozen=True)
+class In:
+    """A predicate testing one field against a list of literals."""
+
+    field: FieldRef
+    values: tuple[Literal, ...]
+    negated: bool = False
+
+
+@dataclass(frozen=True)
+class Between:
+    """A predicate testing one field against an inclusive literal range."""
+
+    field: FieldRef
+    low: Literal
+    high: Literal
+    negated: bool = False
+
+
+@dataclass(frozen=True)
+class IsNull:
+    """A predicate testing whether one field is NULL."""
+
+    field: FieldRef
+    negated: bool = False
+
+
+@dataclass(frozen=True)
+class Like:
+    """A predicate matching one field against a LIKE pattern."""
+
+    field: FieldRef
+    pattern: Literal
+    negated: bool = False
+
+
+@dataclass(frozen=True)
+class Not:
+    """The negation of one predicate."""
+
+    operand: Predicate
+
+
+@dataclass(frozen=True)
 class Logical:
     """A boolean combination of predicates sharing one operator."""
 
     operator: str
-    operands: tuple[Comparison | Logical, ...]
+    operands: tuple[Predicate, ...]
 
 
-type Predicate = Comparison | Logical
+type Predicate = (
+    Comparison | Logical | Not | In | Between | IsNull | Like | FieldComparison
+)
 type Projection = FieldRef | MeasureRef
 
 
@@ -112,14 +188,6 @@ class OrderBy:
     descending: bool = False
 
 
-_COMPARISON = re.compile(
-    r"^(?P<field>[A-Za-z_]\w*(?:\.\w+)*)\s*"
-    r"(?P<operator><=|>=|<>|!=|=|<|>)\s*"
-    r"(?P<value>.+)$"
-)
-_LOGICAL = re.compile(r"\s+(?P<operator>AND|OR)\s+", re.IGNORECASE)
-
-
 def _parse_field(text: str) -> FieldRef:
     """Parse an ``alias.field`` reference into a FieldRef."""
     entity, separator, name = text.partition(".")
@@ -127,51 +195,6 @@ def _parse_field(text: str) -> FieldRef:
     if not separator or not entity or not name:
         raise ValueError(f"Expected 'alias.field', got {text!r}")
     return FieldRef(entity=entity, name=name)
-
-
-def _parse_literal(text: str) -> Literal:
-    """Parse a quoted string, number, boolean or NULL literal."""
-    raw = text.strip()
-    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {"'", '"'}:
-        quote = raw[0]
-        return Literal(raw[1:-1].replace(quote * 2, quote))
-    upper = raw.upper()
-    if upper in {"TRUE", "FALSE"}:
-        return Literal(upper == "TRUE")
-    if upper == "NULL":
-        return Literal(None)
-    try:
-        return Literal(int(raw))
-    except ValueError:
-        pass
-    try:
-        return Literal(float(raw))
-    except ValueError:
-        return Literal(raw)
-
-
-def _parse_comparison(text: str) -> Comparison:
-    """Parse a single ``alias.field <operator> literal`` predicate."""
-    match = _COMPARISON.match(text.strip())
-    if match is None:
-        raise ValueError(f"Unsupported predicate: {text!r}")
-    return Comparison(
-        field=_parse_field(match.group("field")),
-        operator=match.group("operator"),
-        value=_parse_literal(match.group("value")),
-    )
-
-
-def _parse_predicate(text: str) -> Predicate:
-    """Parse a predicate, allowing one level of AND or OR composition."""
-    parts = _LOGICAL.split(text.strip())
-    if len(parts) == 1:
-        return _parse_comparison(text)
-    operands = tuple(_parse_comparison(item) for item in parts[0::2])
-    operators = {item.upper() for item in parts[1::2]}
-    if len(operators) != 1:
-        raise ValueError(f"Mixed logical operators in {text!r}")
-    return Logical(operator=operators.pop(), operands=operands)
 
 
 @dataclass(frozen=True)
@@ -249,8 +272,27 @@ class Query:
         )
 
     def filter(self, *predicates: str) -> Query:
-        """Append parsed predicates and return a new query."""
-        parsed = tuple(_parse_predicate(text) for text in predicates)
+        """Append parsed filter expressions and return a new query.
+
+        Each string goes through
+        :func:`etlalchemy.semantic.filter_parser.parse_filter`, so it may nest
+        parentheses, ``NOT``, ``AND``/``OR``, ``IN``, ``BETWEEN``, ``IS NULL``,
+        ``LIKE``, field-to-field comparisons and literal lists. Fields must be
+        fully qualified as ``alias.field``; a bare name is rejected with a hint.
+
+        Args:
+            *predicates: Filter expressions, one per string.
+
+        Returns:
+            A new query with the parsed predicates appended.
+
+        Raises:
+            ValueError: If an expression is empty or invalid; the message names
+                the error position and quotes the surrounding text.
+        """
+        from etlalchemy.semantic.filter_parser import parse_filter
+
+        parsed = tuple(parse_filter(text) for text in predicates)
         return dataclasses.replace(self, filters=(*self.filters, *parsed))
 
     def order_by(self, ref: str, descending: bool = False) -> Query:
