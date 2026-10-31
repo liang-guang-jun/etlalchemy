@@ -7,9 +7,14 @@ function bodies and ``if TYPE_CHECKING`` blocks are ignored because they never
 run while the module is imported. Import cycles are appended at the end and
 reported on stderr.
 
+The rendered snapshot is written to ``--out`` and, unless ``--no-copy`` is
+passed, copied to the system clipboard so it can be pasted into a review or a
+chat without opening the file.
+
 Usage:
     uv run python .vscode/build_snapshot.py
     uv run python .vscode/build_snapshot.py --root etlalchemy --out snapshot.py
+    uv run python .vscode/build_snapshot.py --no-copy
 """
 
 from __future__ import annotations
@@ -19,6 +24,8 @@ import ast
 import subprocess
 import sys
 from pathlib import Path
+
+import pyperclip
 
 DEFAULT_ROOT = Path("etlalchemy")
 DEFAULT_OUT = Path(".cache/code-snapshot.py")
@@ -163,11 +170,26 @@ def render(files: dict[str, Path], ordered: list[str], cyclic: list[str]) -> str
     return header + "\n" + "\n\n".join(blocks) + "\n"
 
 
+def copy_to_clipboard(text: str) -> bool:
+    """Copy the snapshot to the clipboard and report whether it worked."""
+    try:
+        pyperclip.copy(text)
+    except pyperclip.PyperclipException as exc:
+        print(f"warning: could not copy to clipboard: {exc}", file=sys.stderr)
+        return False
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Write the snapshot file and report the outcome."""
+    """Write the snapshot file, copy it to the clipboard, and report the outcome."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument(
+        "--no-copy",
+        action="store_true",
+        help="Write the snapshot file without copying it to the clipboard.",
+    )
     args = parser.parse_args(argv)
 
     root: Path = args.root
@@ -190,9 +212,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"warning: import cycle among: {', '.join(cyclic)}", file=sys.stderr)
     ordered.extend(cyclic)
 
+    snapshot = render(files, ordered, cyclic)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(files, ordered, cyclic), encoding="utf-8")
+    out.write_text(snapshot, encoding="utf-8")
     print(f"wrote {out} ({len(ordered)} files)")
+
+    if not args.no_copy and copy_to_clipboard(snapshot):
+        print(f"copied {out} to clipboard")
+
     return 0
 
 
