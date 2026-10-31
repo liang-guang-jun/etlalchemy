@@ -23,6 +23,7 @@ from etlalchemy.semantic.graph import (
     GraphService,
     RelationshipCycleError,
 )
+from etlalchemy.semantic.identifier import QualifiedName
 from etlalchemy.semantic.join import EquiJoin, ExpressionJoin, JoinCondition
 from etlalchemy.semantic.measure import Measure
 from etlalchemy.semantic.model import MergeStrategy, SemanticModel, SemanticRegistry
@@ -99,6 +100,7 @@ __all__ = [
     "Not",
     "OrderBy",
     "Projection",
+    "QualifiedName",
     "Query",
     "RelationshipCycleError",
     "Rowset",

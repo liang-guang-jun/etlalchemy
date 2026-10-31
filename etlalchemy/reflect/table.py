@@ -15,6 +15,7 @@ from uuid import uuid4
 import sqlalchemy as sa
 
 from etlalchemy.reflect.mapping import map_type
+from etlalchemy.semantic.identifier import QualifiedName
 from etlalchemy.semantic.rowset import (
     Field,
     Materialization,
@@ -51,11 +52,13 @@ class ReflectedTable:
     primary_key: tuple[str, ...]
     sqlalchemy_table: sa.Table | None = None
 
-    def as_rowset(self, name: str | None = None) -> Rowset:
+    def as_rowset(self, name: QualifiedName | str | None = None) -> Rowset:
         """Return this table as a semantic ``Rowset``.
 
         Args:
-            name: Rowset name; the table name when ``None``.
+            name: Rowset name; the bare table name when ``None``. Pass a
+                :class:`~etlalchemy.semantic.identifier.QualifiedName` to keep
+                the schema and the catalog the table was reflected from.
 
         Returns:
             A table-backed rowset with one field per column.
@@ -67,8 +70,9 @@ class ReflectedTable:
             )
             for column in self.columns
         }
+        rowset_name = name if name is not None else QualifiedName(self.name)
         return Rowset(
-            name=name or self.name,
+            name=rowset_name,
             kind=Materialization.TABLE,
             fields=fields,
             primary_key=list(self.primary_key) or None,

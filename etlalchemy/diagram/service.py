@@ -192,7 +192,7 @@ class DiagramService:
                 )
                 for field in rowset.fields.values()
             ),
-            table=rowset.name if rowset.kind in _PHYSICAL else None,
+            table=rowset.sql_name if rowset.kind in _PHYSICAL else None,
         )
 
     @staticmethod

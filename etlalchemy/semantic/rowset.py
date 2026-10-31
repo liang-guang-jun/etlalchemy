@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from uuid import UUID
 
+from etlalchemy.semantic.identifier import QualifiedName
 from etlalchemy.semantic.types import DataType
 
 
@@ -32,12 +33,29 @@ class Materialization(StrEnum):
 
 @dataclass
 class Rowset:
-    """Semantic wrapper for a table, query, view or CTE, holding its Fields."""
+    """Semantic wrapper for a table, query, view or CTE, holding its Fields.
 
-    name: str
+    ``name`` is a :class:`~etlalchemy.semantic.identifier.QualifiedName` so a
+    reflected table keeps the schema and the catalog it was read from. A plain
+    string is still accepted and wrapped in a bare name.
+    """
+
+    name: QualifiedName | str
     kind: Materialization
     fields: dict[str, Field] = field(default_factory=dict)
     primary_key: list[str] | None = None
+
+    def __post_init__(self) -> None:
+        """Wrap a bare string in a ``QualifiedName``."""
+        if isinstance(self.name, str):
+            self.name = QualifiedName(self.name)
+
+    @property
+    def sql_name(self) -> str:
+        """Return the dotted name used when the Rowset is rendered as SQL."""
+        if isinstance(self.name, QualifiedName):
+            return self.name.to_sql()
+        return self.name
 
 
 @dataclass(frozen=True)

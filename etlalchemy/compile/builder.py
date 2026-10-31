@@ -40,7 +40,7 @@ _DATE_TRUNC: Any = exp.DateTrunc
 
 def _table(entity: SemanticEntity, alias: str) -> exp.Table:
     """Return the aliased table expression of an entity's rowset."""
-    return cast(exp.Table, exp.to_table(entity.relation.name).as_(alias))
+    return cast(exp.Table, exp.to_table(entity.relation.sql_name).as_(alias))
 
 
 def _join_condition(step: JoinStep, context: CompileContext) -> exp.Expression:

@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+from typing import cast
+
+import pytest
 from etlalchemy.semantic import (
+    EquiJoin,
+    Field,
+    FieldRef,
+    Materialization,
+    QualifiedName,
+    Rowset,
     SemanticEntity,
     SemanticModel,
     SemanticRegistry,
     SemanticRelationship,
+    String,
     edges_for_selection,
     highest_priority_edges,
 )
@@ -111,3 +121,107 @@ def test_graph_returns_a_new_service_on_every_call() -> None:
     model = SemanticModel(name="m", registry=registry)
 
     assert model.graph() is not model.graph()
+
+
+def _rowset(name: str, *columns: str, schema: str | None = None) -> Rowset:
+    """Build a rowset of string columns, optionally schema-qualified."""
+    return Rowset(
+        name=QualifiedName(name, schema=schema),
+        kind=Materialization.TABLE,
+        fields={column: Field(column, String()) for column in columns},
+    )
+
+
+def test_register_entity_registers_and_returns_the_entity() -> None:
+    """``register_entity`` stores the rowset under the name and returns it."""
+    model = SemanticModel(name="crm")
+    orders_rowset = _rowset("orders", "id", schema="sales")
+
+    orders = model.register_entity("orders", orders_rowset)
+
+    assert orders.alias == "orders"
+    assert orders.relation is orders_rowset
+    assert model.registry.entities["orders"] is orders
+
+
+def test_register_entity_rejects_a_duplicate_name() -> None:
+    """A name is registered once."""
+    model = SemanticModel(name="crm")
+    model.register_entity("orders", _rowset("orders", "id"))
+
+    with pytest.raises(ValueError, match="already registered"):
+        model.register_entity("orders", _rowset("orders", "id"))
+
+
+def test_register_relationship_builds_the_join_from_field_names() -> None:
+    """The join keys are named, so no FieldCollection has to be built."""
+    model = SemanticModel(name="crm")
+    orders = model.register_entity("orders", _rowset("orders", "id", "customer_id"))
+    customers = model.register_entity("customers", _rowset("customers", "id"))
+
+    relationship = model.register_relationship(
+        "orders_customers",
+        orders,
+        ["customer_id"],
+        customers,
+        ["id"],
+    )
+
+    assert relationship.name == "orders_customers"
+    assert relationship.source_alias() == "orders"
+    assert relationship.target_alias() == "customers"
+    condition = cast(EquiJoin, relationship.condition)
+    assert condition.source.fields[0].name == "customer_id"
+    assert condition.target.fields[0].name == "id"
+    assert model.registry.relationships == [relationship]
+
+
+def test_register_relationship_reports_an_unknown_field() -> None:
+    """A field name that the rowset does not declare is a usage error."""
+    model = SemanticModel(name="crm")
+    orders = model.register_entity("orders", _rowset("orders", "id"))
+    customers = model.register_entity("customers", _rowset("customers", "id"))
+
+    with pytest.raises(ValueError, match="not in the rowset"):
+        model.register_relationship(
+            "orders_customers",
+            orders,
+            ["missing"],
+            customers,
+            ["id"],
+        )
+
+
+def test_register_relationship_rejects_a_duplicate_name() -> None:
+    """A relationship name is registered once."""
+    model = SemanticModel(name="crm")
+    orders = model.register_entity("orders", _rowset("orders", "id"))
+    model.register_relationship("orders_orders", orders, ["id"], orders, ["id"])
+
+    with pytest.raises(ValueError, match="already registered"):
+        model.register_relationship("orders_orders", orders, ["id"], orders, ["id"])
+
+
+def test_register_measure_forwards_the_keyword_arguments() -> None:
+    """``register_measure`` passes its keywords to Measure unchanged."""
+    model = SemanticModel(name="crm")
+
+    measure = model.register_measure(
+        "revenue",
+        field=FieldRef(entity="orders", name="total"),
+        aggregation="sum",
+    )
+
+    assert measure.name == "revenue"
+    assert measure.aggregation == "sum"
+    assert model.registry.measures["revenue"] is measure
+
+
+def test_register_measure_rejects_a_duplicate_name() -> None:
+    """A measure name is registered once."""
+    model = SemanticModel(name="crm")
+    field = FieldRef(entity="orders", name="total")
+    model.register_measure("revenue", field=field)
+
+    with pytest.raises(ValueError, match="already registered"):
+        model.register_measure("revenue", field=field)

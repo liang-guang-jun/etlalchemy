@@ -10,16 +10,26 @@ unbound queries instead, which cannot be compiled until they are rebuilt from
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from etlalchemy.semantic.expression import Query
 from etlalchemy.semantic.graph import GraphService
 from etlalchemy.semantic.measure import Measure
-from etlalchemy.semantic.relationship import SemanticRelationship
-from etlalchemy.semantic.rowset import SemanticEntity
+from etlalchemy.semantic.relationship import (
+    Cardinality,
+    FilterDirection,
+    SemanticRelationship,
+    equi_join,
+)
+from etlalchemy.semantic.rowset import (
+    FieldCollection,
+    Rowset,
+    SemanticEntity,
+)
 
 if TYPE_CHECKING:
     from etlalchemy.diagram.diagram import Diagram
@@ -88,6 +98,119 @@ class SemanticModel:
             entity.id: entity.alias for entity in self.registry.entities.values()
         }
         return GraphService(edges, known_entities=known_entities)
+
+    def register_entity(self, name: str, relation: Rowset) -> SemanticEntity:
+        """Register a Rowset under a name and return its entity.
+
+        Args:
+            name: Registry name of the entity; it is also the entity alias.
+            relation: Rowset the entity reads from.
+
+        Returns:
+            The registered entity.
+
+        Raises:
+            ValueError: If ``name`` is already registered.
+        """
+        if name in self.registry.entities:
+            raise ValueError(f"Entity {name!r} is already registered")
+        entity = SemanticEntity(id=uuid4(), alias=name, relation=relation)
+        self.registry.entities[name] = entity
+        return entity
+
+    def register_relationship(
+        self,
+        name: str,
+        source: SemanticEntity,
+        source_fields: Sequence[str],
+        target: SemanticEntity,
+        target_fields: Sequence[str],
+        *,
+        cardinality: Cardinality = Cardinality.ONE_TO_MANY,
+        filter_direction: FilterDirection = FilterDirection.SINGLE,
+        priority: int = 0,
+    ) -> SemanticRelationship:
+        """Register an equi-join between two entities of this model.
+
+        The join keys are named, so callers do not build ``FieldCollection``
+        objects themselves.
+
+        Args:
+            name: Registry name of the relationship.
+            source: Entity the join starts from.
+            source_fields: Column names of ``source``, aligned with
+                ``target_fields``.
+            target: Entity the join points at.
+            target_fields: Column names of ``target``.
+            cardinality: Data cardinality between the two ends.
+            filter_direction: Whether filters propagate in one direction or
+                both.
+            priority: Selection priority among relationships of the same
+                entity pair.
+
+        Returns:
+            The registered relationship.
+
+        Raises:
+            ValueError: If ``name`` is already registered, or if a named field
+                is not in the rowset of its entity.
+        """
+        if any(item.name == name for item in self.registry.relationships):
+            raise ValueError(f"Relationship {name!r} is already registered")
+        relationship = equi_join(
+            name=name,
+            source=self._collection(source, source_fields),
+            target=self._collection(target, target_fields),
+            cardinality=cardinality,
+            filter_direction=filter_direction,
+            priority=priority,
+        )
+        self.registry.relationships.append(relationship)
+        return relationship
+
+    def register_measure(self, name: str, **kwargs: Any) -> Measure:
+        """Register a Measure under a name.
+
+        The keyword arguments are passed to :class:`~etlalchemy.semantic.Measure`
+        unchanged.
+
+        Args:
+            name: Registry name of the measure.
+            **kwargs: Fields of the measure, such as ``field``, ``fields``,
+                ``entity``, ``aggregation`` and ``routes``.
+
+        Returns:
+            The registered measure.
+
+        Raises:
+            ValueError: If ``name`` is already registered.
+        """
+        if name in self.registry.measures:
+            raise ValueError(f"Measure {name!r} is already registered")
+        measure = Measure(name=name, **kwargs)
+        self.registry.measures[name] = measure
+        return measure
+
+    @staticmethod
+    def _collection(
+        entity: SemanticEntity,
+        names: Sequence[str],
+    ) -> FieldCollection:
+        """Return the fields of ``entity`` named by ``names``.
+
+        Raises:
+            ValueError: If a name is not a field of the entity's rowset.
+        """
+        fields = entity.relation.fields
+        missing = [name for name in names if name not in fields]
+        if missing:
+            raise ValueError(
+                f"Fields {missing} are not in the rowset of entity {entity.alias!r}"
+            )
+        return FieldCollection(
+            entity=entity,
+            fields=tuple(fields[name] for name in names),
+        )
 
     def diagram(self, *entity_refs: str) -> Diagram:
         """Draw the named entities and the relationships between them.

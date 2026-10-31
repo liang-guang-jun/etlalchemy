@@ -11,6 +11,7 @@ from etlalchemy.reflect import (
     as_entities,
     map_type,
 )
+from etlalchemy.semantic.identifier import QualifiedName
 from etlalchemy.semantic.types import (
     Boolean,
     Decimal,
@@ -64,8 +65,8 @@ def test_as_entities_maps_types_and_aliases(tmp_path: Path) -> None:
         aliases={"users": "customers"},
     )
 
-    rowsets = {entity.relation.name: entity.relation for entity in entities}
-    aliases = {entity.relation.name: entity.alias for entity in entities}
+    rowsets = {entity.relation.sql_name: entity.relation for entity in entities}
+    aliases = {entity.relation.sql_name: entity.alias for entity in entities}
     assert aliases == {"orders": "orders", "users": "customers"}
     users = rowsets["users"]
     assert users.primary_key == ["id"]
@@ -105,7 +106,7 @@ def test_as_rowset_keeps_the_primary_key_and_the_live_types(tmp_path: Path) -> N
     users = reflected_tables(source, table_names=("users",))[0]
     rowset = users.as_rowset()
 
-    assert rowset.name == "users"
+    assert rowset.sql_name == "users"
     assert rowset.primary_key == ["id"]
     assert rowset.fields["id"].data_type == Integer()
     assert isinstance(users.sqlalchemy_table, sa.Table)
@@ -124,7 +125,7 @@ def test_as_entity_gives_every_call_a_new_entity(tmp_path: Path) -> None:
     assert second.alias == "orders"
     assert first.id != second.id
     assert first.relation is not second.relation
-    assert second.relation.name == "orders"
+    assert second.relation.sql_name == "orders"
 
 
 def test_as_rowset_maps_cached_type_strings() -> None:
@@ -141,7 +142,7 @@ def test_as_rowset_maps_cached_type_strings() -> None:
     rowset = table.as_rowset(name="locations")
 
     assert table.sqlalchemy_table is None
-    assert rowset.name == "locations"
+    assert rowset.sql_name == "locations"
     assert rowset.primary_key == ["id"]
     assert rowset.fields["id"].data_type == Integer()
     assert rowset.fields["name"].data_type == String(32)
@@ -175,3 +176,18 @@ def test_as_rowset_falls_back_when_the_live_table_lacks_a_column() -> None:
 
     assert rowset.fields["id"].data_type == Integer()
     assert rowset.fields["nickname"].data_type == String(12)
+
+
+def test_as_rowset_accepts_a_qualified_name() -> None:
+    """A reflected table can keep the catalog and schema it was read from."""
+    table = ReflectedTable(
+        name="test",
+        columns=(ReflectedColumn(name="id", sa_type="INTEGER", nullable=False),),
+        primary_key=("id",),
+    )
+
+    rowset = table.as_rowset(
+        QualifiedName("test", schema="default", catalog="main")
+    )
+
+    assert rowset.sql_name == "main.default.test"

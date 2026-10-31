@@ -47,6 +47,7 @@ from etlalchemy.semantic import (
     Literal,
     Materialization,
     Measure,
+    QualifiedName,
     Query,
     RelationshipCycleError,
     Rowset,
@@ -1421,3 +1422,29 @@ def test_fanout_rejection_carries_the_report() -> None:
     assert events[0].severity == "error"
     assert events[0].phase == "fanout"
     assert events[0].measure == "revenue"
+
+
+def test_a_qualified_rowset_name_reaches_the_generated_sql() -> None:
+    """A schema on the rowset name is rendered in front of the table."""
+    model = SemanticModel(name="crm")
+    orders = model.register_entity(
+        "orders",
+        Rowset(
+            name=QualifiedName("orders", schema="crm"),
+            kind=Materialization.TABLE,
+            fields={"id": Field("id", Integer())},
+        ),
+    )
+    assert orders.relation.sql_name == "crm.orders"
+    model.register_measure(
+        "order_rows",
+        field=FieldRef(entity="orders", name="id"),
+        aggregation="count_distinct",
+    )
+
+    compiled = model.q.group_by("orders.id", alias="order_id").calculate(
+        "order_rows"
+    ).compile(dialect="postgres")
+
+    assert "FROM crm.orders" in compiled.sql
+    assert "COUNT(DISTINCT orders.id)" in compiled.sql
