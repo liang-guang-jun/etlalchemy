@@ -32,7 +32,7 @@ class CompiledQuery:
     inline_literals: bool
     nulls_first: bool | None
     identifier_case: str = "preserve"
-    indent_width: int = 4
+    indent_width: int = 2
 
 
 __all__ = ["CompiledQuery"]

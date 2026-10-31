@@ -96,13 +96,26 @@ class FieldRef:
     ``None`` the compiler generates a default alias of ``"entity__name"``.
     ``time_grain`` truncates the field to one of :data:`TIME_GRAINS`; it only
     applies to Date and Timestamp fields, and ``None`` groups by the raw value.
-    The first day of ``time_grain="week"`` is decided by the target dialect.
+    The grain is validated when the reference is constructed: a value outside
+    :data:`TIME_GRAINS` raises ``ValueError``. The first day of
+    ``time_grain="week"`` is decided by the target dialect.
     """
 
     entity: str
     name: str
     alias: str | None = None
     time_grain: str | None = None
+
+    def __post_init__(self) -> None:
+        """Reject a grain that is not one of :data:`TIME_GRAINS`."""
+        if self.time_grain is None:
+            return
+        if self.time_grain not in TIME_GRAINS:
+            expected = ", ".join(TIME_GRAINS)
+            raise ValueError(
+                f"Unsupported time_grain {self.time_grain!r}; expected one of "
+                f"{expected}"
+            )
 
 
 @dataclass(frozen=True)
@@ -278,22 +291,27 @@ class Query:
         Raises:
             ValueError: If ``alias`` or ``time_grain`` is combined with several
                 references, or if ``time_grain`` is not one of
-                :data:`TIME_GRAINS`.
+                :data:`TIME_GRAINS` (raised when the :class:`FieldRef` is
+                constructed).
         """
         parsed = tuple(_parse_field(ref) for ref in refs)
-        if alias is not None:
-            if len(parsed) != 1:
-                raise ValueError("alias is only valid with a single dimension")
-            parsed = (dataclasses.replace(parsed[0], alias=alias),)
-        if time_grain is not None:
-            if len(parsed) != 1:
-                raise ValueError("time_grain is only valid with a single dimension")
-            if time_grain not in TIME_GRAINS:
-                expected = ", ".join(TIME_GRAINS)
+        if len(parsed) != 1:
+            if alias is not None and time_grain is not None:
                 raise ValueError(
-                    f"Unsupported time_grain {time_grain!r}; expected one of {expected}"
+                    "alias and time_grain are only valid with a single dimension"
                 )
-            parsed = (dataclasses.replace(parsed[0], time_grain=time_grain),)
+            if alias is not None:
+                raise ValueError("alias is only valid with a single dimension")
+            if time_grain is not None:
+                raise ValueError("time_grain is only valid with a single dimension")
+        if alias is not None or time_grain is not None:
+            parsed = (
+                dataclasses.replace(
+                    parsed[0],
+                    alias=alias,
+                    time_grain=time_grain,
+                ),
+            )
         return dataclasses.replace(self, dimensions=(*self.dimensions, *parsed))
 
     def calculate(self, measure: str, alias: str | None = None) -> Query:
@@ -358,16 +376,16 @@ class Query:
         dialect: str = "databricks",
         *,
         inline_literals: bool = True,
-        pretty: bool = True,
         unreachable_dimensions: str = "error",
         nulls_first: bool | None = None,
         identifier_case: str = "preserve",
-        indent_width: int = 4,
+        indent_width: int = 2,
     ) -> CompiledQuery:
         """Compile this query against its bound model into a compiled result.
 
         The compiler is imported lazily so the core layer does not pull in the
-        SQL backend at import time.
+        SQL backend at import time. The rendered SQL is always formatted; use
+        sqlglot directly when a single-line statement is needed.
 
         Args:
             dialect: Target SQL dialect name; defaults to ``"databricks"``.
@@ -379,7 +397,6 @@ class Query:
                 untrusted input: it can leak sensitive values into SQL logs and
                 it defeats statement caching. Prefer ``inline_literals=False``
                 for anything user-supplied.
-            pretty: When True, format the SQL with line breaks and indentation.
             unreachable_dimensions: ``"error"`` (default) rejects a measure
                 entity that cannot aggregate by one of the query dimensions,
                 naming the entity and the dimension. ``"null"`` projects NULL
@@ -398,7 +415,7 @@ class Query:
                 compiled identifiers, ``"upper"`` uppercases every identifier
                 and ``"lower"`` lowercases it.
             indent_width: Number of spaces per indentation level of the
-                formatted SQL; defaults to 4.
+                formatted SQL; defaults to 2.
 
         Returns:
             A :class:`~etlalchemy.compile.result.CompiledQuery` holding the
@@ -424,7 +441,6 @@ class Query:
             self.model,
             dialect=dialect,
             inline_literals=inline_literals,
-            pretty=pretty,
             unreachable_dimensions=unreachable_dimensions,
             nulls_first=nulls_first,
             identifier_case=identifier_case,

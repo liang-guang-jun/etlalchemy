@@ -156,6 +156,19 @@ class CompileReport:
         )
 
 
+class CompileError(ValueError):
+    """Raised when compilation fails after collecting diagnostics.
+
+    Attributes:
+        report: CompileReport holding the events collected before the failure.
+    """
+
+    def __init__(self, message: str, report: CompileReport) -> None:
+        """Keep the message and the report collected before the failure."""
+        super().__init__(message)
+        self.report = report
+
+
 __all__ = [
     "BOTH_FILTER_FORCES_INNER",
     "EXPRESSION_JOIN_UNBOUND",
@@ -164,6 +177,7 @@ __all__ = [
     "INVALID_TIME_GRAIN",
     "LEFT_JOIN_FILTERED",
     "UNREACHABLE_DIMENSION",
+    "CompileError",
     "CompileEvent",
     "CompileReport",
     "JoinDecision",

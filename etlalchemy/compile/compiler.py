@@ -22,6 +22,7 @@ from etlalchemy.compile.report import (
     FANOUT_REJECTED,
     FANOUT_RISK,
     UNREACHABLE_DIMENSION,
+    CompileError,
     CompileEvent,
     JoinDecision,
 )
@@ -146,11 +147,10 @@ def compile_query(
     dialect: str = "databricks",
     *,
     inline_literals: bool = True,
-    pretty: bool = True,
     unreachable_dimensions: str = "error",
     nulls_first: bool | None = None,
     identifier_case: str = "preserve",
-    indent_width: int = 4,
+    indent_width: int = 2,
 ) -> CompiledQuery:
     """Compile a semantic query into SQL, parameters and a report.
 
@@ -173,7 +173,6 @@ def compile_query(
             trusted code, but it must not be used with untrusted input: it
             leaks values into SQL logs and defeats statement caching. Prefer
             ``inline_literals=False`` for anything user-supplied.
-        pretty: When True, format the SQL with line breaks and indentation.
         unreachable_dimensions: ``"error"`` (default) rejects a measure entity
             that cannot aggregate by one of the query dimensions, naming the
             entity and the dimension. ``"null"`` projects NULL for that
@@ -190,7 +189,11 @@ def compile_query(
             compiled identifiers, ``"upper"`` uppercases every identifier and
             ``"lower"`` lowercases it.
         indent_width: Number of spaces per indentation level of the formatted
-            SQL; defaults to 4.
+            SQL; defaults to 2.
+
+    The rendered SQL is always formatted with
+    :func:`~etlalchemy.compile.formatting.format_sql`; use sqlglot directly
+    when a single-line statement is needed.
 
     Returns:
         A :class:`~etlalchemy.compile.result.CompiledQuery` holding the SQL
@@ -203,9 +206,11 @@ def compile_query(
 
     Raises:
         ValueError: If ``unreachable_dimensions`` is not ``"error"`` or
-            ``"null"``, a query reference cannot be planned, or a measure can
-            be duplicated by a fanout join (``sum``, ``count``, ``avg`` and
-            every MANY_TO_MANY edge).
+            ``"null"``, or if a query reference cannot be planned.
+        CompileError: If a measure can be duplicated by a fanout join
+            (``sum``, ``count``, ``avg`` and every MANY_TO_MANY edge) or a
+            dimension carries an invalid time grain. ``exc.report`` holds the
+            diagnostics collected before the failure.
     """
     if unreachable_dimensions not in _UNREACHABLE_DIMENSIONS:
         raise ValueError(
@@ -243,7 +248,7 @@ def compile_query(
                     payload=risk,
                 )
             )
-        raise ValueError(_fanout_error_message(errors))
+        raise CompileError(_fanout_error_message(errors), context.report)
     _report_fanout(risks, context)
 
     grouped = group_measures_by_entity(resolved)
@@ -282,7 +287,6 @@ def compile_query(
         dialect=dialect,
         identifier_case=identifier_case,
         indent_width=indent_width,
-        pretty=pretty,
     )
     params: list[object] | dict[str, object] = (
         [] if inline_literals else dict(context.parameters)

@@ -57,11 +57,14 @@ First-version boundaries:
   parameter when ``inline_literals`` is False;
 * a dimension with a ``time_grain`` renders as ``DATE_TRUNC`` in both the
   SELECT list and the GROUP BY clause; the grain only applies to Date and
-  Timestamp fields, and a grain on any other field raises ``ValueError`` while
-  resolving the query;
+  Timestamp fields, and a grain on any other field fails while resolving the
+  query;
 * ORDER BY NULL placement follows ``nulls_first``: ``True`` renders
   ``NULLS FIRST``, ``False`` renders ``NULLS LAST`` and ``None`` renders no
-  NULLS clause, leaving the placement to the target database.
+  NULLS clause, leaving the placement to the target database;
+* the rendered SQL is always formatted: there is no single-line mode, so use
+  sqlglot directly when a compact statement is needed. ``indent_width``
+  defaults to 2 and ``identifier_case`` defaults to ``"preserve"``.
 
 Compile report:
 
@@ -80,6 +83,11 @@ with ``report.with_code(...)`` or ``report.with_severity(...)``; the
 ``warnings``, ``errors``, ``fanout_risks``, ``join_types`` and
 ``unreachable_dimension_warnings`` properties are compatibility views derived
 from ``events`` and ``join_decisions``.
+
+A failure that already collected diagnostics raises
+:class:`~etlalchemy.compile.report.CompileError`, a ``ValueError`` carrying the
+report collected before the failure in ``exc.report``. Argument validation that
+fails before any diagnostic exists still raises a plain ``ValueError``.
 """
 
 from etlalchemy.compile.compiler import compile_query
@@ -92,6 +100,7 @@ from etlalchemy.compile.report import (
     INVALID_TIME_GRAIN,
     LEFT_JOIN_FILTERED,
     UNREACHABLE_DIMENSION,
+    CompileError,
     CompileEvent,
     CompileReport,
     JoinDecision,
@@ -106,6 +115,7 @@ __all__ = [
     "INVALID_TIME_GRAIN",
     "LEFT_JOIN_FILTERED",
     "UNREACHABLE_DIMENSION",
+    "CompileError",
     "CompileEvent",
     "CompileReport",
     "CompiledQuery",

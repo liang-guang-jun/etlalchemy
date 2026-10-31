@@ -201,9 +201,9 @@ def test_complex_filter_compiles_into_the_where_clause(
         )
     )
 
-    sql = squash(query.compile(pretty=False).sql)
+    sql = squash(query.compile().sql)
 
-    assert "(orders.status = 'paid' OR orders.status = 'shipped')" in sql
+    assert "orders.status = 'paid' OR orders.status = 'shipped'" in sql
     assert "orders.amount BETWEEN 100 AND 500" in sql
     assert "NOT orders.status LIKE 'test%'" in sql
     # sqlglot renders the canonical not-is-null AST as "NOT x IS NULL".

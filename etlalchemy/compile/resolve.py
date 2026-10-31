@@ -7,7 +7,11 @@ from collections.abc import Mapping
 from uuid import UUID
 
 from etlalchemy.compile.context import CompileContext
-from etlalchemy.compile.report import INVALID_TIME_GRAIN, CompileEvent
+from etlalchemy.compile.report import (
+    INVALID_TIME_GRAIN,
+    CompileError,
+    CompileEvent,
+)
 from etlalchemy.semantic.expression import (
     Between,
     Comparison,
@@ -210,9 +214,9 @@ def resolve_query(query: Query, context: CompileContext) -> ResolvedQuery:
     ``INVALID_TIME_GRAIN`` event and rejected.
 
     Raises:
-        ValueError: If an entity, field, measure or ordering alias is unknown,
-            or if a ``time_grain`` is set on a field that is not a Date or
-            Timestamp.
+        ValueError: If an entity, field, measure or ordering alias is unknown.
+        CompileError: If a ``time_grain`` is set on a field that is not a Date
+            or Timestamp; ``exc.report`` holds the recorded events.
     """
     dimensions: list[ResolvedDimension] = []
     for dimension_ref in query.dimensions:
@@ -235,7 +239,7 @@ def resolve_query(query: Query, context: CompileContext) -> ResolvedQuery:
                     dimension=dimension_ref.name,
                 )
             )
-            raise ValueError(message)
+            raise CompileError(message, context.report)
         dimensions.append(
             ResolvedDimension(
                 ref=dimension_ref,

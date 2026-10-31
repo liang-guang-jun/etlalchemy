@@ -209,6 +209,39 @@ def test_group_by_rejects_an_unsupported_time_grain() -> None:
     assert "day, week, month, quarter, year" in message
 
 
+def test_group_by_applies_alias_and_time_grain_together() -> None:
+    """A single dimension can be aliased and bucketed at the same time."""
+    query = q.group_by(
+        "orders.created_at",
+        alias="order_month",
+        time_grain="month",
+    )
+
+    dimension = query.dimensions[0]
+    assert dimension.alias == "order_month"
+    assert dimension.time_grain == "month"
+
+
+def test_group_by_rejects_alias_and_time_grain_for_several_refs() -> None:
+    """Both modifiers name one dimension, so together they fail once."""
+    with pytest.raises(
+        ValueError,
+        match="alias and time_grain are only valid with a single dimension",
+    ):
+        q.group_by(
+            "orders.created_at",
+            "users.signup_at",
+            alias="x",
+            time_grain="month",
+        )
+
+
+def test_field_ref_rejects_an_unknown_time_grain_at_construction() -> None:
+    """The reference validates its grain as soon as it is built."""
+    with pytest.raises(ValueError, match="Unsupported time_grain 'fortnight'"):
+        FieldRef(entity="orders", name="created_at", time_grain="fortnight")
+
+
 def test_field_ref_equality_includes_the_alias() -> None:
     """Field references with different aliases are not equal."""
     assert FieldRef(entity="a", name="b") != FieldRef(entity="a", name="b", alias="x")
@@ -265,7 +298,7 @@ def test_compile_passes_the_bound_model(
 ) -> None:
     """query.compile forwards itself, its model, the dialect and the flags."""
     model = SemanticModel(name="crm")
-    calls: list[tuple[Query, SemanticModel, str, bool, bool, str, int]] = []
+    calls: list[tuple[Query, SemanticModel, str, bool, str, int]] = []
 
     def fake_compile(
         query: Query,
@@ -273,11 +306,10 @@ def test_compile_passes_the_bound_model(
         dialect: str = "databricks",
         *,
         inline_literals: bool = True,
-        pretty: bool = True,
         unreachable_dimensions: str = "error",
         nulls_first: bool | None = None,
         identifier_case: str = "preserve",
-        indent_width: int = 4,
+        indent_width: int = 2,
     ) -> CompiledQuery:
         calls.append(
             (
@@ -285,7 +317,6 @@ def test_compile_passes_the_bound_model(
                 bound_model,
                 dialect,
                 inline_literals,
-                pretty,
                 identifier_case,
                 indent_width,
             )
@@ -307,15 +338,14 @@ def test_compile_passes_the_bound_model(
     compiled = query.compile(
         dialect="duckdb",
         inline_literals=False,
-        pretty=False,
         identifier_case="upper",
-        indent_width=2,
+        indent_width=4,
     )
 
     assert (compiled.sql, compiled.params) == ("SELECT 1", [])
     assert compiled.identifier_case == "upper"
-    assert compiled.indent_width == 2
-    assert calls == [(query, model, "duckdb", False, False, "upper", 2)]
+    assert compiled.indent_width == 4
+    assert calls == [(query, model, "duckdb", False, "upper", 4)]
 
 
 def test_query_equality_ignores_the_model() -> None:

@@ -10,10 +10,12 @@ import pytest
 import sqlglot
 from etlalchemy.compile import (
     BOTH_FILTER_FORCES_INNER,
+    FANOUT_REJECTED,
     INVALID_TIME_GRAIN,
     LEFT_JOIN_FILTERED,
     UNREACHABLE_DIMENSION,
     CompiledQuery,
+    CompileError,
     CompileEvent,
     JoinDecision,
     compile_query,
@@ -395,18 +397,6 @@ def test_logical_predicates_bind_both_literals(
     assert "%(param0)s" in compiled.sql
     assert "%(param1)s" in compiled.sql
     assert "AND" in squash(compiled.sql)
-
-
-def test_pretty_controls_line_breaks() -> None:
-    """Pretty output spans lines; compact output stays on one line."""
-    model = _model()
-    query = model.q.group_by("orders.status").calculate("revenue").limit(10)
-
-    pretty_sql = query.compile(pretty=True).sql
-    compact_sql = query.compile(pretty=False).sql
-
-    assert "\n" in pretty_sql
-    assert "\n" not in compact_sql
 
 
 def test_order_by_uses_the_measure_alias(
@@ -1263,6 +1253,18 @@ def test_time_grain_renders_date_trunc_on_databricks() -> None:
     }
     assert units == {"MONTH"}
 
+    statement = sqlglot.parse_one(compiled.sql, read="databricks")
+    selection = statement.find(exp.Select)
+    assert selection is not None
+    group = selection.args.get("group")
+    assert group is not None
+    selected = selection.expressions[0]
+    assert selected.find(exp.DateTrunc) is not None
+    assert group.find(exp.DateTrunc) is not None
+    assert selected.this.sql(dialect="databricks") == group.expressions[0].sql(
+        dialect="databricks"
+    )
+
 
 def test_time_grain_accepts_a_date_field() -> None:
     """A Date field is truncated like a Timestamp field."""
@@ -1301,6 +1303,7 @@ def test_week_grain_leaves_the_week_start_to_the_dialect() -> None:
     compiled = query.compile(dialect="postgres")
 
     assert "DATE_TRUNC" in compiled.sql
+    assert "WEEK" in compiled.sql.upper()
     assert len(_truncations(compiled.sql, "postgres")) == 2
 
 
@@ -1352,7 +1355,7 @@ def test_time_grain_on_a_non_time_field_is_rejected() -> None:
     context = CompileContext(model=model, query=query)
 
     with pytest.raises(
-        ValueError,
+        CompileError,
         match="requires a Date or Timestamp field",
     ) as excinfo:
         resolve_query(query, context)
@@ -1360,7 +1363,8 @@ def test_time_grain_on_a_non_time_field_is_rejected() -> None:
     message = str(excinfo.value)
     assert "time_grain 'month'" in message
     assert "orders.status" in message
-    events = context.report.with_code(INVALID_TIME_GRAIN)
+    assert excinfo.value.report is context.report
+    events = excinfo.value.report.with_code(INVALID_TIME_GRAIN)
     assert len(events) == 1
     assert events[0].severity == "error"
     assert events[0].phase == "resolve"
@@ -1371,9 +1375,7 @@ def test_time_grain_on_a_non_time_field_is_rejected() -> None:
 def test_compile_applies_the_identifier_case_and_indent_width() -> None:
     """The formatting options reach the rendered statement."""
     model = _model()
-    query = model.q.group_by("orders.status", alias="order_status").calculate(
-        "revenue"
-    )
+    query = model.q.group_by("orders.status", alias="order_status").calculate("revenue")
 
     compiled = query.compile(identifier_case="upper", indent_width=2)
 
@@ -1384,15 +1386,28 @@ def test_compile_applies_the_identifier_case_and_indent_width() -> None:
 
 
 def test_compile_defaults_to_preserving_identifiers() -> None:
-    """The default formatting keeps the casing and a four-space indent."""
+    """The default formatting keeps the casing and a two-space indent."""
     model = _model()
-    query = model.q.group_by("orders.status", alias="order_status").calculate(
-        "revenue"
-    )
+    query = model.q.group_by("orders.status", alias="order_status").calculate("revenue")
 
     compiled = query.compile()
 
     assert "FROM crm.orders AS orders" in compiled.sql
-    assert "\n    SUM(orders.total) AS revenue" in compiled.sql
+    assert "\n  SUM(orders.total) AS revenue" in compiled.sql
     assert compiled.identifier_case == "preserve"
-    assert compiled.indent_width == 4
+    assert compiled.indent_width == 2
+
+
+def test_fanout_rejection_carries_the_report() -> None:
+    """A fanout error raises CompileError with the recorded diagnostics."""
+    model = _model()
+    query = model.q.group_by("customers.region").calculate("revenue")
+
+    with pytest.raises(CompileError, match="Fanout detected") as excinfo:
+        query.compile()
+
+    events = excinfo.value.report.with_code(FANOUT_REJECTED)
+    assert len(events) == 1
+    assert events[0].severity == "error"
+    assert events[0].phase == "fanout"
+    assert events[0].measure == "revenue"
