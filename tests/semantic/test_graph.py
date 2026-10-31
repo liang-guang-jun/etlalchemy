@@ -14,7 +14,7 @@ from etlalchemy.semantic import (
 )
 from etlalchemy.semantic.graph import _classify
 
-from builders import entity, known, relationship
+from semantic.builders import entity, known, relationship
 
 
 def test_acyclic_edge_set_has_no_cycle() -> None:

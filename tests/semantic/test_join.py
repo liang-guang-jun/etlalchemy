@@ -32,7 +32,7 @@ from etlalchemy.semantic import (
 from etlalchemy.semantic.join import JoinCondition
 from etlalchemy.semantic.relationship import SemanticRelationship
 
-from builders import entity, relationship
+from semantic.builders import entity, relationship
 
 
 def _parameter(value: object) -> str:

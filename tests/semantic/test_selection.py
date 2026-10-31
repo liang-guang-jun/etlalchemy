@@ -17,7 +17,7 @@ from etlalchemy.semantic import (
     lowest_priority_edges,
 )
 
-from builders import entity, relationship
+from semantic.builders import entity, relationship
 
 
 def _registry(

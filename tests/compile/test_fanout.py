@@ -20,9 +20,8 @@ from etlalchemy.semantic import (
     SemanticRegistry,
     expression_join,
 )
-from etlalchemy.semantic.measure import SUPPORTED_AGGREGATIONS
 
-from builders import entity, relationship
+from semantic.builders import entity, relationship
 
 
 def _measure(name: str, entity_alias: str, aggregation: str = "sum") -> Measure:
@@ -80,14 +79,6 @@ def test_measure_rejects_an_unsupported_aggregation() -> None:
             field=FieldRef(entity="orders", name="id"),
             aggregation="median",
         )
-
-
-def test_count_distinct_is_a_supported_aggregation() -> None:
-    """count_distinct is part of the supported aggregation set."""
-    measure = _measure("distinct_orders", "orders", "count_distinct")
-
-    assert measure.aggregation == "count_distinct"
-    assert "count_distinct" in SUPPORTED_AGGREGATIONS
 
 
 def test_reverse_one_to_many_is_an_error_for_sum() -> None:

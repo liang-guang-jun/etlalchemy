@@ -23,7 +23,7 @@ from etlalchemy.semantic import (
 )
 from sqlglot import exp
 
-from builders import entity, relationship
+from semantic.builders import entity, relationship
 
 NAMESPACE = UUID("00000000-0000-0000-0000-000000000000")
 

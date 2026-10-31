@@ -669,6 +669,16 @@ def test_base_entity_prefers_the_measure_entity() -> None:
     assert choose_base_entity(resolved, referenced_entities(resolved)) == "orders"
 
 
+def test_base_entity_rejects_a_query_without_projections() -> None:
+    """A query with neither dimensions nor measures has no FROM entity."""
+    model = _model()
+    query = model.q.limit(1)
+    _, resolved = _resolved(model, query)
+
+    with pytest.raises(ValueError, match="no dimensions or measures"):
+        choose_base_entity(resolved, referenced_entities(resolved))
+
+
 def test_base_entity_falls_back_to_the_first_dimension() -> None:
     """Queries without measures start from the first dimension's entity."""
     model = _model()

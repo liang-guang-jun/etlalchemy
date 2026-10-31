@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from collections.abc import Callable
 from importlib import resources
 from typing import Any
@@ -418,15 +417,3 @@ def test_render_can_still_draw_the_static_picture(
     rendered = diagram.render(interactive=False, direction="vertical")
 
     assert getattr(rendered, "data", None) == diagram.to_html(direction="vertical")
-
-
-def test_render_returns_the_document_when_ipython_is_missing(
-    monkeypatch: pytest.MonkeyPatch,
-    make_model: Callable[[], SemanticModel],
-) -> None:
-    monkeypatch.setitem(sys.modules, "IPython.display", None)
-
-    rendered = make_model().diagram().render()
-
-    assert isinstance(rendered, str)
-    assert rendered.startswith("<!doctype html>")

@@ -255,13 +255,30 @@ def test_render_returns_a_display_object(
     assert "srcdoc=" in shown
 
 
-def test_render_returns_html_when_ipython_is_missing(
+def test_render_returns_the_interactive_document_without_ipython(
     monkeypatch: pytest.MonkeyPatch,
     make_model: Callable[[], SemanticModel],
 ) -> None:
+    """The default render is the canvas, not the still picture."""
     monkeypatch.setitem(sys.modules, "IPython.display", None)
 
     rendered = make_model().diagram().render()
 
     assert isinstance(rendered, str)
+    assert rendered.startswith("<!doctype html>")
+    assert "react-flow__node" in rendered
+
+
+def test_render_returns_a_still_fragment_when_asked_for_one(
+    monkeypatch: pytest.MonkeyPatch,
+    make_model: Callable[[], SemanticModel],
+) -> None:
+    """``interactive=False`` is the branch that yields a bare SVG fragment."""
+    monkeypatch.setitem(sys.modules, "IPython.display", None)
+
+    rendered = make_model().diagram().render(interactive=False)
+
+    assert isinstance(rendered, str)
     assert "<svg" in rendered
+    assert "<!doctype html>" not in rendered
+    assert "react-flow" not in rendered

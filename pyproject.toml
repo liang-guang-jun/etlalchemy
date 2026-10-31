@@ -14,7 +14,18 @@ classifiers = [
 dependencies = [
     "jinja2>=3.1.4",
     "lark>=1.1",
+    "sqlalchemy>=2.0",
     "sqlglot>=30.26.0",
+]
+
+[project.optional-dependencies]
+databricks = [
+    "databricks-sdk>=0.18",
+    "databricks-sql-connector>=4.0.1",
+    "databricks-sqlalchemy>=2.0.10",
+]
+yaml = [
+    "pyyaml>=6.0",
 ]
 
 [dependency-groups]
@@ -26,6 +37,7 @@ dev = [
     "pyperclip>=1.11.0",
     "pytest>=9.1.1",
     "ruff>=0.17.2",
+    "types-pyyaml>=6.0.12.20261030",
 ]
 
 [build-system]
@@ -67,9 +79,9 @@ warn_unused_ignores = true
 show_error_codes = true
 pretty = true
 # The test tree is not a package, so every conftest.py maps to the same module
-# name. Keep the root one out of the build so mypy has a single conftest module
-# to check; pytest still loads it, and the root module holds only fixtures.
-exclude = ["^tests/conftest\\.py$"]
+# name. Keep all of them out of the build so mypy does not report duplicate
+# modules; pytest still loads them, and they hold only fixtures.
+exclude = ["conftest\\.py$"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
