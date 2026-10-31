@@ -27,6 +27,8 @@ UNREACHABLE_DIMENSION = "UNREACHABLE_DIMENSION"
 FANOUT_RISK = "FANOUT_RISK"
 #: A fanout risk that rejects the query.
 FANOUT_REJECTED = "FANOUT_REJECTED"
+#: A time grain was requested on a field that is not a Date or Timestamp.
+INVALID_TIME_GRAIN = "INVALID_TIME_GRAIN"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -159,6 +161,7 @@ __all__ = [
     "EXPRESSION_JOIN_UNBOUND",
     "FANOUT_REJECTED",
     "FANOUT_RISK",
+    "INVALID_TIME_GRAIN",
     "LEFT_JOIN_FILTERED",
     "UNREACHABLE_DIMENSION",
     "CompileEvent",

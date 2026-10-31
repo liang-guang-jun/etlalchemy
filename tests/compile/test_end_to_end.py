@@ -10,6 +10,7 @@ import pytest
 import sqlglot
 from etlalchemy.compile import (
     BOTH_FILTER_FORCES_INNER,
+    INVALID_TIME_GRAIN,
     LEFT_JOIN_FILTERED,
     UNREACHABLE_DIMENSION,
     CompiledQuery,
@@ -33,10 +34,14 @@ from etlalchemy.compile.routes import select_edges
 from etlalchemy.semantic import (
     Cardinality,
     Comparison,
+    DataType,
+    Date,
+    Decimal,
     Field,
     FieldCollection,
     FieldRef,
     FilterDirection,
+    Integer,
     Literal,
     Materialization,
     Measure,
@@ -48,6 +53,7 @@ from etlalchemy.semantic import (
     SemanticRegistry,
     SemanticRelationship,
     String,
+    Timestamp,
     equi_join,
 )
 from sqlglot import exp
@@ -1177,3 +1183,183 @@ def test_full_outer_join_uses_null_safe_equality() -> None:
     sql = query.compile(dialect="databricks").sql
 
     assert "IS NOT DISTINCT FROM" in sql
+
+
+def _timed_entity(alias: str, fields: dict[str, DataType]) -> SemanticEntity:
+    """Build an entity with explicit column types and a single primary key."""
+    rowset = Rowset(
+        name=f"crm.{alias}",
+        kind=Materialization.TABLE,
+        fields={
+            name: Field(name=name, data_type=data_type)
+            for name, data_type in fields.items()
+        },
+        primary_key=["id"],
+    )
+    return SemanticEntity(id=uuid5(NAMESPACE, alias), alias=alias, relation=rowset)
+
+
+def _timed_model() -> SemanticModel:
+    """Build a model whose facts carry Date and Timestamp columns."""
+    orders = _timed_entity(
+        "orders",
+        {
+            "id": Integer(),
+            "status": String(),
+            "created_at": Timestamp(),
+            "shipped_on": Date(),
+            "total": Decimal(10, 2),
+        },
+    )
+    refunds = _timed_entity(
+        "refunds",
+        {"id": Integer(), "order_id": Integer(), "amount": Decimal(10, 2)},
+    )
+    registry = SemanticRegistry(
+        entities={"orders": orders, "refunds": refunds},
+        relationships=[
+            _relationship("orders_refunds", orders, "id", refunds, "order_id")
+        ],
+    )
+    registry.measures["revenue"] = Measure(
+        name="revenue",
+        field=FieldRef(entity="orders", name="total"),
+    )
+    registry.measures["refund_total"] = Measure(
+        name="refund_total",
+        field=FieldRef(entity="refunds", name="amount"),
+    )
+    return SemanticModel(name="timed", registry=registry)
+
+
+def _truncations(sql: str, dialect: str) -> list[exp.Expression]:
+    """Return the date truncations of a rendered statement."""
+    tree = sqlglot.parse_one(sql, read=dialect)
+    return [*tree.find_all(exp.DateTrunc), *tree.find_all(exp.TimestampTrunc)]
+
+
+def test_time_grain_renders_date_trunc_on_databricks() -> None:
+    """A monthly dimension is truncated in both the SELECT and GROUP BY."""
+    model = _timed_model()
+    query = model.q.group_by(
+        "orders.created_at",
+        alias="order_month",
+        time_grain="month",
+    ).calculate("revenue")
+
+    compiled = query.compile()
+    truncations = _truncations(compiled.sql, "databricks")
+
+    assert len(truncations) == 2
+    assert {node.args["this"].sql(dialect="databricks") for node in truncations} == {
+        "orders.created_at"
+    }
+    units = {
+        str(node.args["unit"].sql(dialect="databricks")).strip("'")
+        for node in truncations
+    }
+    assert units == {"MONTH"}
+
+
+def test_time_grain_accepts_a_date_field() -> None:
+    """A Date field is truncated like a Timestamp field."""
+    model = _timed_model()
+    query = model.q.group_by("orders.shipped_on", time_grain="quarter").calculate(
+        "revenue"
+    )
+
+    compiled = query.compile(dialect="postgres")
+
+    assert len(_truncations(compiled.sql, "postgres")) == 2
+
+
+def test_time_grain_none_keeps_the_raw_column() -> None:
+    """Without a grain the dimension is projected unchanged."""
+    model = _timed_model()
+    query = model.q.group_by("orders.created_at", alias="order_month").calculate(
+        "revenue"
+    )
+
+    compiled = query.compile()
+
+    assert "TRUNC" not in compiled.sql
+    assert _truncations(compiled.sql, "databricks") == []
+
+
+def test_week_grain_leaves_the_week_start_to_the_dialect() -> None:
+    """A weekly dimension is truncated; the first day depends on the dialect."""
+    model = _timed_model()
+    query = model.q.group_by(
+        "orders.created_at",
+        alias="order_week",
+        time_grain="week",
+    ).calculate("revenue")
+
+    compiled = query.compile(dialect="postgres")
+
+    assert "DATE_TRUNC" in compiled.sql
+    assert len(_truncations(compiled.sql, "postgres")) == 2
+
+
+def test_time_grain_is_truncated_in_every_cte() -> None:
+    """Each fact CTE truncates the dimension in SELECT and GROUP BY."""
+    model = _timed_model()
+    query = (
+        model.q.group_by(
+            "orders.created_at",
+            alias="order_month",
+            time_grain="month",
+        )
+        .calculate("revenue", alias="total_revenue")
+        .calculate("refund_total", alias="total_refund")
+    )
+
+    compiled = query.compile(dialect="postgres")
+
+    assert compiled.report.cte_count == 2
+    assert len(_truncations(compiled.sql, "postgres")) == 4
+
+
+def test_grained_dimension_is_ordered_by_its_output_alias(
+    squash: Callable[[str], str],
+) -> None:
+    """ORDER BY names the truncated output, it does not repeat DATE_TRUNC."""
+    model = _timed_model()
+    query = (
+        model.q.group_by(
+            "orders.created_at",
+            alias="order_month",
+            time_grain="month",
+        )
+        .calculate("revenue", alias="total_revenue")
+        .order_by("order_month")
+    )
+
+    compiled = query.compile(dialect="postgres")
+
+    assert "ORDER BY order_month" in squash(compiled.sql)
+    # Only the SELECT list and the GROUP BY truncate the column.
+    assert len(_truncations(compiled.sql, "postgres")) == 2
+
+
+def test_time_grain_on_a_non_time_field_is_rejected() -> None:
+    """A grain on a string field records an error event and raises."""
+    model = _timed_model()
+    query = model.q.group_by("orders.status", time_grain="month").calculate("revenue")
+    context = CompileContext(model=model, query=query)
+
+    with pytest.raises(
+        ValueError,
+        match="requires a Date or Timestamp field",
+    ) as excinfo:
+        resolve_query(query, context)
+
+    message = str(excinfo.value)
+    assert "time_grain 'month'" in message
+    assert "orders.status" in message
+    events = context.report.with_code(INVALID_TIME_GRAIN)
+    assert len(events) == 1
+    assert events[0].severity == "error"
+    assert events[0].phase == "resolve"
+    assert events[0].entity == "orders"
+    assert events[0].dimension == "status"

@@ -23,6 +23,14 @@ a measure with ``calculate(..., alias="...")``. Without an explicit alias a
 dimension is named ``"entity__name"`` and a measure keeps its name. Ordering
 terms (``order_by``) match these output aliases.
 
+Time grain: ``group_by(..., time_grain="month")`` buckets one Date or
+Timestamp dimension into one of ``TIME_GRAINS`` (``"day"``, ``"week"``,
+``"month"``, ``"quarter"`` or ``"year"``), and the compiler renders the
+bucket with ``DATE_TRUNC``. Only the bare unit names are accepted; ``"date"``
+and ``start_of_*`` aliases are rejected. The first day of a ``"week"`` is
+decided by the target dialect, and a grain on a field that is not a Date or
+Timestamp is rejected while resolving the query.
+
 Filter DSL: ``filter`` takes SQL-like boolean expressions that
 :mod:`etlalchemy.semantic.filter_parser` turns into the nodes below. Fields are
 fully qualified as ``alias.field``; literals are single- or double-quoted
@@ -55,6 +63,9 @@ if TYPE_CHECKING:
 #: Key of one relationship route: ``(source alias, target alias)``.
 RouteKey = tuple[str, str]
 
+#: Time buckets accepted by ``group_by(..., time_grain=...)``.
+TIME_GRAINS = ("day", "week", "month", "quarter", "year")
+
 __all__ = [
     "Between",
     "Comparison",
@@ -72,6 +83,7 @@ __all__ = [
     "Projection",
     "Query",
     "RouteKey",
+    "TIME_GRAINS",
     "q",
 ]
 
@@ -82,11 +94,15 @@ class FieldRef:
 
     ``alias`` is the output column name of the referenced field. When it is
     ``None`` the compiler generates a default alias of ``"entity__name"``.
+    ``time_grain`` truncates the field to one of :data:`TIME_GRAINS`; it only
+    applies to Date and Timestamp fields, and ``None`` groups by the raw value.
+    The first day of ``time_grain="week"`` is decided by the target dialect.
     """
 
     entity: str
     name: str
     alias: str | None = None
+    time_grain: str | None = None
 
 
 @dataclass(frozen=True)
@@ -239,28 +255,45 @@ class Query:
         self,
         *refs: str,
         alias: str | None = None,
+        time_grain: str | None = None,
     ) -> Query:
         """Append ``alias.field`` dimensions and return a new query.
 
-        ``alias`` renames the single output column, so it is only valid when
-        exactly one reference is given. Measures take an output alias through
-        ``calculate(..., alias=...)`` instead.
+        ``alias`` renames the single output column and ``time_grain`` buckets
+        it, so each is only valid when exactly one reference is given. Measures
+        take an output alias through ``calculate(..., alias=...)`` instead.
 
         Args:
             refs: One or more ``alias.field`` references.
             alias: Output column name for the dimension.
+            time_grain: Truncate the dimension to one of :data:`TIME_GRAINS`
+                (``"day"``, ``"week"``, ``"month"``, ``"quarter"`` or
+                ``"year"``). It only applies to Date and Timestamp fields and
+                to a single reference; ``None`` groups by the raw value. The
+                first day of ``"week"`` is decided by the target dialect.
 
         Returns:
             A new query with the dimensions appended.
 
         Raises:
-            ValueError: If ``alias`` is combined with several references.
+            ValueError: If ``alias`` or ``time_grain`` is combined with several
+                references, or if ``time_grain`` is not one of
+                :data:`TIME_GRAINS`.
         """
         parsed = tuple(_parse_field(ref) for ref in refs)
         if alias is not None:
             if len(parsed) != 1:
                 raise ValueError("alias is only valid with a single dimension")
             parsed = (dataclasses.replace(parsed[0], alias=alias),)
+        if time_grain is not None:
+            if len(parsed) != 1:
+                raise ValueError("time_grain is only valid with a single dimension")
+            if time_grain not in TIME_GRAINS:
+                expected = ", ".join(TIME_GRAINS)
+                raise ValueError(
+                    f"Unsupported time_grain {time_grain!r}; expected one of {expected}"
+                )
+            parsed = (dataclasses.replace(parsed[0], time_grain=time_grain),)
         return dataclasses.replace(self, dimensions=(*self.dimensions, *parsed))
 
     def calculate(self, measure: str, alias: str | None = None) -> Query:
@@ -389,9 +422,13 @@ class Query:
         )
 
 
-def group_by(*refs: str, alias: str | None = None) -> Query:
+def group_by(
+    *refs: str,
+    alias: str | None = None,
+    time_grain: str | None = None,
+) -> Query:
     """Start a query with the given dimension references."""
-    return Query().group_by(*refs, alias=alias)
+    return Query().group_by(*refs, alias=alias, time_grain=time_grain)
 
 
 def calculate(measure: str, alias: str | None = None) -> Query:

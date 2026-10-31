@@ -141,9 +141,18 @@ class _ModelQueryStarters:
         """Keep the model every started query is bound to."""
         self._model = model
 
-    def group_by(self, *refs: str, alias: str | None = None) -> Query:
+    def group_by(
+        self,
+        *refs: str,
+        alias: str | None = None,
+        time_grain: str | None = None,
+    ) -> Query:
         """Start a query on this model with the given dimensions."""
-        return Query(model=self._model).group_by(*refs, alias=alias)
+        return Query(model=self._model).group_by(
+            *refs,
+            alias=alias,
+            time_grain=time_grain,
+        )
 
     def calculate(self, measure: str, alias: str | None = None) -> Query:
         """Start a query on this model with the given measure."""

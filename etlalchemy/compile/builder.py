@@ -33,6 +33,10 @@ _NULLS_SUFFIX: dict[bool | None, str] = {
     False: " NULLS LAST",
 }
 
+#: sqlglot leaves the ``DateTrunc`` constructor unannotated, so call it through
+#: ``Any`` instead of silencing the untyped call at every use site.
+_DATE_TRUNC: Any = exp.DateTrunc
+
 
 def _table(entity: SemanticEntity, alias: str) -> exp.Table:
     """Return the aliased table expression of an entity's rowset."""
@@ -87,6 +91,26 @@ def _ordered_term(term: OrderBy, context: CompileContext) -> exp.Expression:
     return exp.Var(this=f"{column}{direction}{_NULLS_SUFFIX[context.nulls_first]}")
 
 
+def _dimension_expression(
+    dimension: ResolvedDimension,
+    context: CompileContext,
+) -> exp.Expression:
+    """Return the SQL expression of a dimension, with its time grain."""
+    # sqlglot 30 builds a truncation from ``unit`` and ``this`` and renders it
+    # as ``DATE_TRUNC('MONTH', column)``; Databricks spells it ``TRUNC(...)``.
+    column = exp.column(
+        dimension.field.name,
+        table=context.sql_alias(dimension.entity),
+    )
+    if dimension.time_grain is None:
+        return column
+    truncated: exp.Expression = _DATE_TRUNC(
+        unit=exp.var(dimension.time_grain),
+        this=column,
+    )
+    return truncated
+
+
 def _apply_order_and_limit(
     query: exp.Select,
     order_terms: tuple[OrderBy, ...],
@@ -104,6 +128,9 @@ def _apply_order_and_limit(
 def build_select(plan: JoinPlan, context: CompileContext) -> exp.Select:
     """Build a sqlglot SELECT AST for a single-fact join plan.
 
+    Dimensions that carry a time grain are projected and grouped with
+    ``DATE_TRUNC`` in both the SELECT list and the GROUP BY clause.
+
     Args:
         plan: Planned base entity, joins, grain and projections.
         context: Compilation state used for SQL aliases and parameters.
@@ -115,10 +142,7 @@ def build_select(plan: JoinPlan, context: CompileContext) -> exp.Select:
     for dimension in plan.group_by:
         query = query.select(
             exp.alias_(
-                exp.column(
-                    dimension.field.name,
-                    table=context.sql_alias(dimension.entity),
-                ),
+                _dimension_expression(dimension, context),
                 dimension.output_alias,
             )
         )
@@ -137,19 +161,17 @@ def build_select(plan: JoinPlan, context: CompileContext) -> exp.Select:
 
     if plan.group_by:
         query = query.group_by(
-            *[
-                exp.column(
-                    dimension.field.name,
-                    table=context.sql_alias(dimension.entity),
-                )
-                for dimension in plan.group_by
-            ]
+            *[_dimension_expression(dimension, context) for dimension in plan.group_by]
         )
     return _apply_order_and_limit(query, plan.order_terms, plan.row_limit, context)
 
 
 def build_cte(cte: CTEPlan, context: CompileContext) -> exp.CTE:
     """Build one pre-aggregation CTE.
+
+    Dimensions that carry a time grain are projected and grouped with
+    ``DATE_TRUNC``, so a CTE groups by the truncated value rather than by the
+    raw timestamp.
 
     Args:
         cte: CTE plan with its fact entity, grain, joins and filters.
@@ -163,10 +185,7 @@ def build_cte(cte: CTEPlan, context: CompileContext) -> exp.CTE:
     for dimension in cte.dimensions:
         query = query.select(
             exp.alias_(
-                exp.column(
-                    dimension.field.name,
-                    table=context.sql_alias(dimension.entity),
-                ),
+                _dimension_expression(dimension, context),
                 dimension.output_alias,
             )
         )
@@ -187,13 +206,7 @@ def build_cte(cte: CTEPlan, context: CompileContext) -> exp.CTE:
 
     if cte.dimensions:
         query = query.group_by(
-            *[
-                exp.column(
-                    dimension.field.name,
-                    table=context.sql_alias(dimension.entity),
-                )
-                for dimension in cte.dimensions
-            ]
+            *[_dimension_expression(dimension, context) for dimension in cte.dimensions]
         )
     return exp.CTE(
         this=query,

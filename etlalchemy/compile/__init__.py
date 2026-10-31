@@ -54,6 +54,10 @@ First-version boundaries:
   compile report records as a warning;
 * every literal is inlined into the SQL text by default and becomes a bound
   parameter when ``inline_literals`` is False;
+* a dimension with a ``time_grain`` renders as ``DATE_TRUNC`` in both the
+  SELECT list and the GROUP BY clause; the grain only applies to Date and
+  Timestamp fields, and a grain on any other field raises ``ValueError`` while
+  resolving the query;
 * ORDER BY NULL placement follows ``nulls_first``: ``True`` renders
   ``NULLS FIRST``, ``False`` renders ``NULLS LAST`` and ``None`` renders no
   NULLS clause, leaving the placement to the target database.
@@ -66,10 +70,11 @@ Compile report:
 :class:`~etlalchemy.compile.report.JoinDecision` entries of the plan. Every
 event carries a stable ``code`` (``EXPRESSION_JOIN_UNBOUND``,
 ``LEFT_JOIN_FILTERED``, ``BOTH_FILTER_FORCES_INNER``, ``UNREACHABLE_DIMENSION``,
-``FANOUT_RISK`` or ``FANOUT_REJECTED``), a ``severity`` (``"info"``,
-``"warning"`` or ``"error"``) and the compile ``phase`` (``"resolve"``,
-``"routes"``, ``"fanout"``, ``"plan"`` or ``"build"``), plus the entity,
-relationship, dimension, measure and join type it refers to. Filter the report
+``FANOUT_RISK``, ``FANOUT_REJECTED`` or ``INVALID_TIME_GRAIN``), a
+``severity`` (``"info"``, ``"warning"`` or ``"error"``) and the compile
+``phase`` (``"resolve"``, ``"routes"``, ``"fanout"``, ``"plan"`` or
+``"build"``), plus the entity, relationship, dimension, measure and join type
+it refers to. Filter the report
 with ``report.with_code(...)`` or ``report.with_severity(...)``; the
 ``warnings``, ``errors``, ``fanout_risks``, ``join_types`` and
 ``unreachable_dimension_warnings`` properties are compatibility views derived
@@ -82,6 +87,7 @@ from etlalchemy.compile.report import (
     EXPRESSION_JOIN_UNBOUND,
     FANOUT_REJECTED,
     FANOUT_RISK,
+    INVALID_TIME_GRAIN,
     LEFT_JOIN_FILTERED,
     UNREACHABLE_DIMENSION,
     CompileEvent,
@@ -95,6 +101,7 @@ __all__ = [
     "EXPRESSION_JOIN_UNBOUND",
     "FANOUT_REJECTED",
     "FANOUT_RISK",
+    "INVALID_TIME_GRAIN",
     "LEFT_JOIN_FILTERED",
     "UNREACHABLE_DIMENSION",
     "CompileEvent",

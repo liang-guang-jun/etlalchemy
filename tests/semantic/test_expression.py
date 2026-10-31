@@ -168,6 +168,47 @@ def test_module_level_group_by_keeps_the_alias_and_model_binding() -> None:
     assert bound.dimensions[0].alias == "order_status"
 
 
+def test_group_by_carries_the_time_grain() -> None:
+    """A single dimension can be bucketed by a time grain."""
+    query = q.group_by("orders.created_at", time_grain="month")
+
+    assert query.dimensions[0].time_grain == "month"
+
+
+def test_group_by_without_time_grain_leaves_it_unset() -> None:
+    """Dimensions start without a grain and group by their raw value."""
+    assert q.group_by("orders.created_at").dimensions[0].time_grain is None
+
+
+def test_module_level_group_by_forwards_the_time_grain() -> None:
+    """The module-level starter forwards the grain to the bound query."""
+    bound = SemanticModel(name="crm").q.group_by(
+        "orders.created_at",
+        time_grain="quarter",
+    )
+
+    assert bound.dimensions[0].time_grain == "quarter"
+
+
+def test_group_by_rejects_time_grain_for_several_refs() -> None:
+    """A grain cannot bucket more than one dimension."""
+    with pytest.raises(
+        ValueError,
+        match="time_grain is only valid with a single dimension",
+    ):
+        q.group_by("orders.created_at", "users.signup_at", time_grain="month")
+
+
+def test_group_by_rejects_an_unsupported_time_grain() -> None:
+    """Only the documented grains are accepted."""
+    with pytest.raises(ValueError) as excinfo:
+        q.group_by("orders.created_at", time_grain="hour")
+
+    message = str(excinfo.value)
+    assert "Unsupported time_grain 'hour'" in message
+    assert "day, week, month, quarter, year" in message
+
+
 def test_field_ref_equality_includes_the_alias() -> None:
     """Field references with different aliases are not equal."""
     assert FieldRef(entity="a", name="b") != FieldRef(entity="a", name="b", alias="x")

@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from uuid import UUID
 
 from etlalchemy.compile.context import CompileContext
+from etlalchemy.compile.report import INVALID_TIME_GRAIN, CompileEvent
 from etlalchemy.semantic.expression import (
     Between,
     Comparison,
@@ -25,15 +26,21 @@ from etlalchemy.semantic.expression import (
 from etlalchemy.semantic.measure import Measure
 from etlalchemy.semantic.routing import effective_routes
 from etlalchemy.semantic.rowset import Field, SemanticEntity
+from etlalchemy.semantic.types import Date, Timestamp
 
 
 @dataclasses.dataclass(frozen=True)
 class ResolvedDimension:
-    """A dimension bound to its entity and field."""
+    """A dimension bound to its entity and field.
+
+    ``time_grain`` comes from :attr:`~etlalchemy.semantic.expression.FieldRef.
+    time_grain` and is ``None`` when the dimension groups by its raw value.
+    """
 
     ref: FieldRef
     entity: SemanticEntity
     field: Field
+    time_grain: str | None = None
 
     @property
     def output_alias(self) -> str:
@@ -198,14 +205,44 @@ def _resolve_measure_fields(
 def resolve_query(query: Query, context: CompileContext) -> ResolvedQuery:
     """Resolve the references of a query and record its effective routes.
 
+    A dimension that carries a ``time_grain`` must reference a Date or
+    Timestamp field; a grain on any other type is recorded as an
+    ``INVALID_TIME_GRAIN`` event and rejected.
+
     Raises:
-        ValueError: If an entity, field, measure or ordering alias is unknown.
+        ValueError: If an entity, field, measure or ordering alias is unknown,
+            or if a ``time_grain`` is set on a field that is not a Date or
+            Timestamp.
     """
     dimensions: list[ResolvedDimension] = []
     for dimension_ref in query.dimensions:
         entity, field = resolve_field(dimension_ref, context)
+        if dimension_ref.time_grain is not None and not isinstance(
+            field.data_type, (Date, Timestamp)
+        ):
+            message = (
+                f"time_grain {dimension_ref.time_grain!r} requires a Date or "
+                f"Timestamp field, got {field.data_type.to_string()} on "
+                f"{dimension_ref.entity}.{dimension_ref.name}"
+            )
+            context.report.add(
+                CompileEvent(
+                    code=INVALID_TIME_GRAIN,
+                    severity="error",
+                    message=message,
+                    phase="resolve",
+                    entity=dimension_ref.entity,
+                    dimension=dimension_ref.name,
+                )
+            )
+            raise ValueError(message)
         dimensions.append(
-            ResolvedDimension(ref=dimension_ref, entity=entity, field=field)
+            ResolvedDimension(
+                ref=dimension_ref,
+                entity=entity,
+                field=field,
+                time_grain=dimension_ref.time_grain,
+            )
         )
 
     measures: list[ResolvedMeasure] = []
