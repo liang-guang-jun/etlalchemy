@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+from etlalchemy.compile.context import CompileReport
+from etlalchemy.compile.result import CompiledQuery
 from etlalchemy.semantic import (
     Comparison,
     FieldRef,
@@ -227,24 +229,30 @@ def test_compile_passes_the_bound_model(
     def fake_compile(
         query: Query,
         bound_model: SemanticModel,
-        dialect: str = "postgres",
+        dialect: str = "databricks",
         *,
-        bind_literals: bool = False,
+        inline_literals: bool = True,
         pretty: bool = True,
         unreachable_dimensions: str = "error",
         nulls_first: bool | None = None,
-        include_report: bool = False,
-    ) -> tuple[str, list[object]]:
-        calls.append((query, bound_model, dialect, bind_literals, pretty))
-        return "SELECT 1", []
+    ) -> CompiledQuery:
+        calls.append((query, bound_model, dialect, inline_literals, pretty))
+        return CompiledQuery(
+            sql="SELECT 1",
+            params=[],
+            report=CompileReport(),
+            dialect=dialect,
+            inline_literals=inline_literals,
+            nulls_first=nulls_first,
+        )
 
     monkeypatch.setattr("etlalchemy.compile.compiler.compile_query", fake_compile)
     query = model.q.group_by("orders.status")
 
-    sql, parameters = query.compile(dialect="duckdb", bind_literals=True, pretty=False)
+    compiled = query.compile(dialect="duckdb", inline_literals=False, pretty=False)
 
-    assert (sql, parameters) == ("SELECT 1", [])
-    assert calls == [(query, model, "duckdb", True, False)]
+    assert (compiled.sql, compiled.params) == ("SELECT 1", [])
+    assert calls == [(query, model, "duckdb", False, False)]
 
 
 def test_query_equality_ignores_the_model() -> None:

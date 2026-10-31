@@ -181,7 +181,7 @@ def test_count_distinct_compiles_into_a_distinct_count() -> None:
     model = SemanticModel(name="distinct", registry=registry)
     query = model.q.group_by("teams.id").calculate("member_count")
 
-    sql, _ = query.compile()
+    sql = query.compile().sql
 
     assert "COUNT(DISTINCT members.id) AS member_count" in _squash(sql)
 
@@ -202,37 +202,39 @@ def test_compile_rejects_a_summed_measure_that_fans_out() -> None:
 
 
 def test_compile_reports_warning_level_fanout_risks() -> None:
-    """include_report returns the report carrying the warning risks."""
+    """The report carries the fanout risks that only warn."""
     model = _model(aggregation="min")
     query = model.q.group_by("members.id").calculate("team_total")
 
-    sql, params, report = query.compile(include_report=True)
+    compiled = query.compile()
 
-    assert "MIN(teams.id) AS team_total" in _squash(sql)
-    assert params == []
-    assert [risk.measure for risk in report.fanout_risks] == ["team_total"]
-    assert report.fanout_risks[0].severity == "warning"
+    assert "MIN(teams.id) AS team_total" in _squash(compiled.sql)
+    assert compiled.params == []
+    assert [risk.measure for risk in compiled.report.fanout_risks] == ["team_total"]
+    assert compiled.report.fanout_risks[0].severity == "warning"
     # teams holds the measure, so it is the base and the one end joins with LEFT.
-    assert report.join_types == (("teams_members", "LEFT"),)
+    assert compiled.report.join_types == (("teams_members", "LEFT"),)
 
 
-def test_compile_still_returns_two_values_by_default() -> None:
-    """Without include_report the caller keeps the (sql, params) pair."""
+def test_compile_returns_a_compiled_query() -> None:
+    """The result carries sql, params and report without asking for them."""
     model = _model()
     query = model.q.group_by("teams.id").calculate("member_total")
 
     result = query.compile()
 
-    assert len(result) == 2
+    assert result.sql
+    assert result.params == []
+    assert result.report.fanout_risks == ()
 
 
-def test_compile_query_returns_the_report_on_request() -> None:
-    """The module entry point honours include_report as well."""
+def test_compile_query_returns_the_report() -> None:
+    """The module entry point returns the same compiled result."""
     model = _model()
     query = model.q.group_by("teams.id").calculate("member_total")
 
-    sql, params, report = compile_query(query, model, include_report=True)
+    compiled = compile_query(query, model)
 
-    assert query.compile()[0] == sql
-    assert params == []
-    assert report.fanout_risks == ()
+    assert query.compile().sql == compiled.sql
+    assert compiled.params == []
+    assert compiled.report.fanout_risks == ()

@@ -290,7 +290,7 @@ def test_expression_join_compiles_into_the_on_clause() -> None:
     model = _model()
     query = model.q.group_by("patterns.pattern").calculate("revenue")
 
-    sql, _ = query.compile()
+    sql = query.compile().sql
 
     statement = sqlglot.parse_one(sql, read="postgres")
     joined = statement.args["joins"][0]
@@ -311,10 +311,10 @@ def test_expression_join_rejects_bidirectional_filters_at_construction() -> None
 
 
 def test_expression_join_warns_about_unbound_literals() -> None:
-    """Binding literals cannot reach an opaque expression, so it warns."""
+    """A parameterised compile cannot reach an opaque expression, so it warns."""
     model = _model()
     query = model.q.group_by("patterns.pattern").calculate("revenue")
-    context = CompileContext(model=model, query=query, bind_literals=True)
+    context = CompileContext(model=model, query=query, inline_literals=False)
     resolved = resolve_query(query, context)
 
     _warn_expression_joins(select_edges(resolved, context), context)
@@ -324,7 +324,7 @@ def test_expression_join_warns_about_unbound_literals() -> None:
 
 
 def test_expression_join_stays_silent_with_inline_literals() -> None:
-    """Without literal binding there is nothing to warn about."""
+    """With literals inlined there is nothing to warn about."""
     model = _model()
     query = model.q.group_by("patterns.pattern").calculate("revenue")
     context = CompileContext(model=model, query=query)
@@ -335,7 +335,7 @@ def test_expression_join_stays_silent_with_inline_literals() -> None:
     assert context.report.warnings == []
 
 
-def test_equi_join_without_bind_literals_stays_silent() -> None:
+def test_equi_join_stays_silent_when_literals_are_parameterized() -> None:
     """Equi joins never need the expression warning."""
     orders, customers = _orders(), _customers()
     model = SemanticModel(
@@ -360,7 +360,7 @@ def test_equi_join_without_bind_literals_stays_silent() -> None:
     )
     query = model.q.group_by("customers.name").calculate("revenue")
 
-    sql, _ = query.compile(bind_literals=True)
+    sql = query.compile(inline_literals=False).sql
 
     assert "ON orders.customer_id = customers.id" in _squash(sql)
 
@@ -382,6 +382,6 @@ def test_plain_relationship_still_joins_on_ids() -> None:
     )
     query = model.q.group_by("b.id").calculate("count")
 
-    sql, _ = query.compile()
+    sql = query.compile().sql
 
     assert "b.id = a.id" in _squash(sql) or "a.id = b.id" in _squash(sql)

@@ -54,17 +54,17 @@ class CompileContext:
     maps entity aliases to the SQL aliases used in the statement,
     ``entity_by_alias`` resolves the aliases written in a query, and
     ``measure_routes`` caches the effective routes of every measure the query
-    touches. ``bind_literals`` decides whether literals become placeholders or
-    are inlined into the SQL text. ``nulls_first`` controls the NULL placement
-    rendered in every ORDER BY term: ``True`` renders ``NULLS FIRST``, ``False``
-    renders ``NULLS LAST`` and ``None`` renders no NULLS clause so the target
-    database default applies.
+    touches. ``inline_literals`` decides whether literals are written into the
+    SQL text (the default) or become placeholders collected in ``parameters``.
+    ``nulls_first`` controls the NULL placement rendered in every ORDER BY term:
+    ``True`` renders ``NULLS FIRST``, ``False`` renders ``NULLS LAST`` and
+    ``None`` renders no NULLS clause so the target database default applies.
     """
 
     model: SemanticModel
     query: Query
-    dialect: str = "postgres"
-    bind_literals: bool = False
+    dialect: str = "databricks"
+    inline_literals: bool = True
     unreachable_dimensions: str = "error"
     nulls_first: bool | None = None
     parameters: dict[str, object] = dataclasses.field(default_factory=dict)

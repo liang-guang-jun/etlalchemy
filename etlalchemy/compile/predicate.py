@@ -46,13 +46,14 @@ def build_literal(value: object, context: CompileContext) -> exp.Expression:
         context: Compilation state that collects bound parameters.
 
     Returns:
-        A placeholder when ``context.bind_literals`` is set, otherwise the
-        value converted to its sqlglot literal node.
+        The value converted to its sqlglot literal node when
+        ``context.inline_literals`` is set, otherwise a placeholder bound to
+        the value.
     """
-    if context.bind_literals:
-        name = context.add_parameter(value)
-        return exp.Placeholder(this=name)
-    return cast(exp.Expression, exp.convert(value))
+    if context.inline_literals:
+        return cast(exp.Expression, exp.convert(value))
+    name = context.add_parameter(value)
+    return exp.Placeholder(this=name)
 
 
 def _column(ref: FieldRef, context: CompileContext) -> exp.Column:
@@ -85,10 +86,10 @@ def _negate(node: exp.Expression, negated: bool) -> exp.Expression:
 def build_condition(predicate: Predicate, context: CompileContext) -> exp.Expression:
     """Build a sqlglot condition for a predicate node.
 
-    Literals become bound parameters when ``context.bind_literals`` is set and
-    are inlined as SQL literals otherwise. ``IN`` lists bind every value, and
-    negated nodes are wrapped in ``exp.Not`` because sqlglot's condition nodes
-    take no ``negated`` argument.
+    Literals are inlined as SQL literals when ``context.inline_literals`` is
+    set and become bound parameters otherwise. ``IN`` lists bind or inline
+    every value, and negated nodes are wrapped in ``exp.Not`` because sqlglot's
+    condition nodes take no ``negated`` argument.
 
     Args:
         predicate: Predicate node from the query.

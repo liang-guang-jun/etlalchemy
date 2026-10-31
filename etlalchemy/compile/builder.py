@@ -47,7 +47,7 @@ def _join_condition(step: JoinStep, context: CompileContext) -> exp.Expression:
     sql, _ = relationship.condition.to_sql(
         context.sql_alias(source_entity),
         context.sql_alias(target_entity),
-        context.bind_literals,
+        context.inline_literals,
         context.add_parameter,
     )
     return cast(exp.Expression, sql_condition(sql))

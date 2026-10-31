@@ -44,13 +44,12 @@ Function calls and arithmetic inside filters are not supported.
 from __future__ import annotations
 
 import dataclasses
-import typing
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from etlalchemy.compile.context import CompileReport
+    from etlalchemy.compile.result import CompiledQuery
     from etlalchemy.semantic.model import SemanticModel
 
 #: Key of one relationship route: ``(source alias, target alias)``.
@@ -321,58 +320,30 @@ class Query:
             raise ValueError(f"limit must be non-negative, got {n}")
         return dataclasses.replace(self, row_limit=n)
 
-    @overload
     def compile(
         self,
-        dialect: str = "postgres",
+        dialect: str = "databricks",
         *,
-        bind_literals: bool = False,
+        inline_literals: bool = True,
         pretty: bool = True,
         unreachable_dimensions: str = "error",
         nulls_first: bool | None = None,
-        include_report: typing.Literal[False] = False,
-    ) -> tuple[str, list[object] | dict[str, object]]: ...
-
-    @overload
-    def compile(
-        self,
-        dialect: str = "postgres",
-        *,
-        bind_literals: bool = False,
-        pretty: bool = True,
-        unreachable_dimensions: str = "error",
-        nulls_first: bool | None = None,
-        include_report: typing.Literal[True],
-    ) -> tuple[str, list[object] | dict[str, object], CompileReport]: ...
-
-    def compile(
-        self,
-        dialect: str = "postgres",
-        *,
-        bind_literals: bool = False,
-        pretty: bool = True,
-        unreachable_dimensions: str = "error",
-        nulls_first: bool | None = None,
-        include_report: bool = False,
-    ) -> (
-        tuple[str, list[object] | dict[str, object]]
-        | tuple[str, list[object] | dict[str, object], CompileReport]
-    ):
-        """Compile this query against its bound model into SQL and parameters.
+    ) -> CompiledQuery:
+        """Compile this query against its bound model into a compiled result.
 
         The compiler is imported lazily so the core layer does not pull in the
         SQL backend at import time.
 
         Args:
-            dialect: Target SQL dialect name.
-            bind_literals: When True, literal values are emitted as bound
-                parameters and returned separately in ``params``. When False
-                (default), literals are inlined into the SQL text. Inlining is
-                convenient for debugging and for values that come from trusted
-                code, but it must not be used with untrusted input: it can leak
-                sensitive values into SQL logs and it defeats statement
-                caching. Prefer ``bind_literals=True`` for anything
-                user-supplied.
+            dialect: Target SQL dialect name; defaults to ``"databricks"``.
+            inline_literals: When True (default), literal values are written
+                into the SQL text and ``params`` is empty. When False, every
+                literal becomes a placeholder and its value is collected in
+                ``params``. Inlining is convenient for debugging and for values
+                that come from trusted code, but it must not be used with
+                untrusted input: it can leak sensitive values into SQL logs and
+                it defeats statement caching. Prefer ``inline_literals=False``
+                for anything user-supplied.
             pretty: When True, format the SQL with line breaks and indentation.
             unreachable_dimensions: ``"error"`` (default) rejects a measure
                 entity that cannot aggregate by one of the query dimensions,
@@ -388,19 +359,12 @@ class Query:
                 Postgres but first on Databricks. The placement is a compile
                 option, not part of the query: ``order_by`` keeps taking only a
                 reference and a ``descending`` flag.
-            include_report: When True, the compiled ``CompileReport`` is
-                returned as a third value, which carries the fanout risks that
-                only warrant a warning and the join types of the plan. When
-                False (default) only the SQL and the parameters are returned,
-                and warning-level fanout risks go to the module logger.
 
         Returns:
-            ``(sql, params)``, or ``(sql, params, report)`` when
-            ``include_report`` is set. When ``bind_literals`` is True and the
-            dialect uses named placeholders, ``params`` is a dict keyed by
-            placeholder name; when the dialect uses positional placeholders,
-            ``params`` is a list in placeholder order. When ``bind_literals``
-            is False, ``params`` is an empty list.
+            A :class:`~etlalchemy.compile.result.CompiledQuery` holding the
+            SQL text, the parameters, the compile report, the dialect, the
+            literal mode and the NULL placement used. Read them through
+            ``.sql``, ``.params`` and ``.report``.
 
         Raises:
             ValueError: If the query is not bound to a model, if
@@ -414,26 +378,14 @@ class Query:
             )
         from etlalchemy.compile.compiler import compile_query
 
-        if include_report:
-            return compile_query(
-                self,
-                self.model,
-                dialect=dialect,
-                bind_literals=bind_literals,
-                pretty=pretty,
-                unreachable_dimensions=unreachable_dimensions,
-                nulls_first=nulls_first,
-                include_report=True,
-            )
         return compile_query(
             self,
             self.model,
             dialect=dialect,
-            bind_literals=bind_literals,
+            inline_literals=inline_literals,
             pretty=pretty,
             unreachable_dimensions=unreachable_dimensions,
             nulls_first=nulls_first,
-            include_report=False,
         )
 
 

@@ -1,12 +1,11 @@
-"""Entry point that turns a semantic query into dialect SQL and parameters."""
+"""Entry point that turns a semantic query into a compiled result."""
 
 from __future__ import annotations
 
 import logging
-from typing import Literal, overload
 
 from etlalchemy.compile.builder import build_merge, build_select
-from etlalchemy.compile.context import CompileContext, CompileReport
+from etlalchemy.compile.context import CompileContext
 from etlalchemy.compile.plan import (
     FanoutRisk,
     detect_fanout,
@@ -16,6 +15,7 @@ from etlalchemy.compile.plan import (
     plan_merge,
 )
 from etlalchemy.compile.resolve import resolve_query
+from etlalchemy.compile.result import CompiledQuery
 from etlalchemy.compile.routes import select_edges
 from etlalchemy.semantic.expression import Query
 from etlalchemy.semantic.join import ExpressionJoin
@@ -36,8 +36,12 @@ def _warn_expression_joins(
     edges: tuple[SemanticRelationship, ...],
     context: CompileContext,
 ) -> None:
-    """Warn about expression joins that cannot bind their literals."""
-    if not context.bind_literals:
+    """Warn about expression joins that cannot parameterize their literals.
+
+    An expression join is rendered as opaque SQL, so when literals are not
+    inlined the caller is told that that join cannot bind them.
+    """
+    if context.inline_literals:
         return
     for relationship in edges:
         if isinstance(relationship.condition, ExpressionJoin):
@@ -74,67 +78,37 @@ def _report_fanout(risks: tuple[FanoutRisk, ...], context: CompileContext) -> No
         )
 
 
-@overload
 def compile_query(
     query: Query,
     model: SemanticModel,
-    dialect: str = "postgres",
+    dialect: str = "databricks",
     *,
-    bind_literals: bool = False,
+    inline_literals: bool = True,
     pretty: bool = True,
     unreachable_dimensions: str = "error",
     nulls_first: bool | None = None,
-    include_report: Literal[False] = False,
-) -> tuple[str, list[object] | dict[str, object]]: ...
-
-
-@overload
-def compile_query(
-    query: Query,
-    model: SemanticModel,
-    dialect: str = "postgres",
-    *,
-    bind_literals: bool = False,
-    pretty: bool = True,
-    unreachable_dimensions: str = "error",
-    nulls_first: bool | None = None,
-    include_report: Literal[True],
-) -> tuple[str, list[object] | dict[str, object], CompileReport]: ...
-
-
-def compile_query(
-    query: Query,
-    model: SemanticModel,
-    dialect: str = "postgres",
-    *,
-    bind_literals: bool = False,
-    pretty: bool = True,
-    unreachable_dimensions: str = "error",
-    nulls_first: bool | None = None,
-    include_report: bool = False,
-) -> (
-    tuple[str, list[object] | dict[str, object]]
-    | tuple[str, list[object] | dict[str, object], CompileReport]
-):
-    """Compile a semantic query into dialect SQL and parameters.
+) -> CompiledQuery:
+    """Compile a semantic query into SQL, parameters and a report.
 
     The compilation resolves the query references, selects the relationships it
     traverses, plans one CTE per fact entity, and renders either a single
     select or the CTE merge query for ``dialect``. Fanout detection runs right
     after the edges are selected and before any plan is built, so a measure a
     join can duplicate rejects the query before any SQL is generated; risks
-    that only warn are kept in the compile report.
+    that only warn are kept in the returned report.
 
     Args:
         query: Semantic query to compile.
         model: Model used to resolve entities and measures.
-        dialect: Target SQL dialect understood by sqlglot.
-        bind_literals: When True, literal values become bound parameters and
-            are returned separately; when False (default) they are inlined
-            into the SQL text. Inlining is convenient for debugging and for
-            trusted values, but it must not be used with untrusted input: it
+        dialect: Target SQL dialect understood by sqlglot; defaults to
+            ``"databricks"``.
+        inline_literals: When True (default), literal values are written into
+            the SQL text and ``params`` is empty. When False, every literal
+            becomes a placeholder and its value is collected in ``params``.
+            Inlining is convenient for debugging and for values that come from
+            trusted code, but it must not be used with untrusted input: it
             leaks values into SQL logs and defeats statement caching. Prefer
-            ``bind_literals=True`` for anything user-supplied.
+            ``inline_literals=False`` for anything user-supplied.
         pretty: When True, format the SQL with line breaks and indentation.
         unreachable_dimensions: ``"error"`` (default) rejects a measure entity
             that cannot aggregate by one of the query dimensions, naming the
@@ -148,17 +122,14 @@ def compile_query(
             placement identical across dialects, while ``None`` leaves it
             dialect dependent: ``ASC`` sorts NULLs last on Postgres but first on
             Databricks.
-        include_report: When True, return a third value with the
-            ``CompileReport`` of the compilation. When False (default) only the
-            SQL and the parameters are returned.
 
     Returns:
-        ``(sql, params)``, or ``(sql, params, report)`` when
-        ``include_report`` is set. With ``bind_literals`` set, ``params`` is a
-        dict keyed by placeholder name (or a positional list when the dialect
-        uses positional placeholders); drivers that only accept positional
-        arguments need the caller to convert the dict themselves. Without
-        binding, ``params`` is an empty list.
+        A :class:`~etlalchemy.compile.result.CompiledQuery` holding the SQL
+        text, the parameters, the compile report, the dialect, the literal
+        mode and the NULL placement used. With ``inline_literals`` False,
+        ``params`` is a dict keyed by placeholder name (drivers that only
+        accept positional arguments need the caller to convert the dict
+        themselves); with ``inline_literals`` True it is an empty list.
 
     Raises:
         ValueError: If ``unreachable_dimensions`` is not ``"error"`` or
@@ -176,7 +147,7 @@ def compile_query(
         model=model,
         query=query,
         dialect=dialect,
-        bind_literals=bind_literals,
+        inline_literals=inline_literals,
         unreachable_dimensions=unreachable_dimensions,
         nulls_first=nulls_first,
     )
@@ -217,8 +188,13 @@ def compile_query(
 
     sql = statement.sql(dialect=dialect, pretty=pretty)
     params: list[object] | dict[str, object] = (
-        dict(context.parameters) if bind_literals else []
+        [] if inline_literals else dict(context.parameters)
     )
-    if include_report:
-        return sql, params, context.report
-    return sql, params
+    return CompiledQuery(
+        sql=sql,
+        params=params,
+        report=context.report,
+        dialect=dialect,
+        inline_literals=inline_literals,
+        nulls_first=nulls_first,
+    )

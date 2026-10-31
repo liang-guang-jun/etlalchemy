@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en"{% if theme != "auto" %} data-theme="{{ theme }}"{% endif %}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+<style>
+{{ flow_css }}
+{% include "style.css" %}
+</style>
+</head>
+<body>
+<div id="etlalchemy-fallback">{{ fallback }}</div>
+<div id="etlalchemy-canvas"></div>
+<svg width="0" height="0" aria-hidden="true"
+  style="position:absolute;pointer-events:none">
+  <defs>
+    <marker id="ea-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ea-edge)"/>
+    </marker>
+    <marker id="ea-arrow-accent" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ea-accent)"/>
+    </marker>
+  </defs>
+</svg>
+<script type="application/json" id="etlalchemy-diagram">{{ data }}</script>
+<script>
+{{ canvas_js }}
+</script>
+</body>
+</html>

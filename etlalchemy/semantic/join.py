@@ -78,7 +78,7 @@ class JoinCondition(Protocol):
         self,
         source_alias: str,
         target_alias: str,
-        bind_literals: bool,
+        inline_literals: bool,
         add_parameter: Callable[[object], str],
     ) -> tuple[str, list[object]]:
         """Return the ON clause SQL and its bound parameters."""
@@ -120,7 +120,7 @@ class EquiJoin:
         self,
         source_alias: str,
         target_alias: str,
-        bind_literals: bool,
+        inline_literals: bool,
         add_parameter: Callable[[object], str],
     ) -> tuple[str, list[object]]:
         """Return the equality ON clause; no parameters are produced."""
@@ -174,12 +174,12 @@ class ExpressionJoin:
         self,
         source_alias: str,
         target_alias: str,
-        bind_literals: bool,
+        inline_literals: bool,
         add_parameter: Callable[[object], str],
     ) -> tuple[str, list[object]]:
         """Return the expression ON clause; no parameters are produced.
 
-        ``bind_literals`` and ``add_parameter`` are accepted for protocol
+        ``inline_literals`` and ``add_parameter`` are accepted for protocol
         compatibility but ignored: an opaque expression cannot expose its
         literals, so every value in it is inlined in the SQL text.
         """

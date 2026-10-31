@@ -1,8 +1,20 @@
-"""Semantic query compilation into dialect SQL and parameters.
+"""Semantic query compilation into dialect SQL, parameters and a report.
 
 ``compile_query(query, model, dialect)`` resolves the query against a model,
 picks the relationships the query traverses, plans its joins, builds a sqlglot
-AST and renders it for the requested dialect.
+AST and renders it for the requested dialect. It returns a
+:class:`~etlalchemy.compile.result.CompiledQuery`; read the statement through
+``compiled.sql``, the parameters through ``compiled.params`` and the
+diagnostics through ``compiled.report``.
+
+Compile options:
+
+* the default dialect is ``"databricks"``;
+* literals are inlined into the SQL by default (``inline_literals=True``) and
+  ``params`` is empty; ``inline_literals=False`` turns every literal into a
+  placeholder and collects its value in ``params``;
+* ``nulls_first`` defaults to ``None``, which renders no NULLS clause at all
+  and leaves the placement to the target database.
 
 First-version boundaries:
 
@@ -27,7 +39,7 @@ First-version boundaries:
   more than one entity, and together with ``count`` it is rejected when the
   query spans several fact entities, because the value cannot be merged across
   CTEs yet;
-* ``include_report=True`` returns the ``CompileReport`` with the fanout
+* the return value always carries the ``CompileReport`` with the fanout
   warnings and the join types of the plan;
 * filters are parsed from a SQL-like DSL into ``Comparison``, ``Logical``,
   ``Not``, ``In``, ``Between``, ``IsNull``, ``Like`` and ``FieldComparison``
@@ -40,13 +52,14 @@ First-version boundaries:
   BOTH and MANY_TO_MANY join with INNER, and ONE_TO_ONE joins with LEFT. A LEFT
   join whose target side is filtered still behaves like an INNER join, which the
   compile report records as a warning;
-* every literal becomes a bound parameter when ``bind_literals`` is set and is
-  inlined into the SQL text otherwise;
+* every literal is inlined into the SQL text by default and becomes a bound
+  parameter when ``inline_literals`` is False;
 * ORDER BY NULL placement follows ``nulls_first``: ``True`` renders
   ``NULLS FIRST``, ``False`` renders ``NULLS LAST`` and ``None`` renders no
   NULLS clause, leaving the placement to the target database.
 """
 
 from etlalchemy.compile.compiler import compile_query
+from etlalchemy.compile.result import CompiledQuery
 
-__all__ = ["compile_query"]
+__all__ = ["CompiledQuery", "compile_query"]

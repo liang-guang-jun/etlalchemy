@@ -256,7 +256,7 @@ def test_multi_column_count_distinct_renders_natively_on_databricks() -> None:
     model = _model()
     query = model.q.calculate("unique_user_product")
 
-    sql, _ = query.compile(dialect="databricks")
+    sql = query.compile(dialect="databricks").sql
 
     assert "COUNT(DISTINCT orders.user_id, orders.order_id)" in _squash(sql)
 

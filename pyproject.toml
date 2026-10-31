@@ -12,12 +12,16 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "jinja2>=3.1.4",
     "lark>=1.1",
     "sqlglot>=30.26.0",
 ]
 
 [dependency-groups]
 dev = [
+    "ipykernel>=7.4.0",
+    "ipython>=8.0",
+    "jupyter>=1.1.1",
     "mypy>=2.4.0",
     "pytest>=9.1.1",
     "ruff>=0.17.2",
@@ -67,6 +71,12 @@ module = "tests.*"
 # Allow untyped defs/calls in tests.
 disallow_untyped_defs = false
 disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+module = ["IPython.*"]
+# IPython is an optional dependency: the diagram renders as plain HTML without
+# it, so an environment that does not need notebooks must still type-check.
+ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
 # Pytest

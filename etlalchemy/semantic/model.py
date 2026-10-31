@@ -13,12 +13,16 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from etlalchemy.semantic.expression import Query
 from etlalchemy.semantic.graph import GraphService
 from etlalchemy.semantic.measure import Measure
 from etlalchemy.semantic.relationship import SemanticRelationship
 from etlalchemy.semantic.rowset import SemanticEntity
+
+if TYPE_CHECKING:
+    from etlalchemy.diagram.diagram import Diagram
 
 
 @dataclass
@@ -84,6 +88,28 @@ class SemanticModel:
             entity.id: entity.alias for entity in self.registry.entities.values()
         }
         return GraphService(edges, known_entities=known_entities)
+
+    def diagram(self, *entity_refs: str) -> Diagram:
+        """Draw the named entities and the relationships between them.
+
+        With no argument every entity is drawn. A relationship is drawn only
+        when both of its ends are drawn, and a column is marked as joined only
+        when a drawn relationship joins it.
+
+        Args:
+            entity_refs: Entity names, aliases or ids, in the order the boxes
+                are to be read in. Duplicates are drawn once.
+
+        Returns:
+            The diagram of the selected entities.
+
+        Raises:
+            KeyError: If an entity reference matches no entity, or matches
+                more than one entity.
+        """
+        from etlalchemy.diagram.service import DiagramService
+
+        return DiagramService(self).build(*entity_refs)
 
     @property
     def q(self) -> _ModelQueryStarters:

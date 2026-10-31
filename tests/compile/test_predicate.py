@@ -178,8 +178,8 @@ def test_not_like_is_negated_with_not() -> None:
 
 
 def test_in_list_binds_every_literal() -> None:
-    """With bind_literals every IN value becomes a parameter."""
-    context = _context(bind_literals=True)
+    """With inline_literals=False every IN value becomes a parameter."""
+    context = _context(inline_literals=False)
     node = build_condition(
         parse_filter("orders.status IN ('paid', 'shipped')"), context
     )
@@ -203,7 +203,7 @@ def test_complex_filter_compiles_into_the_where_clause() -> None:
         )
     )
 
-    sql = _squash(query.compile(pretty=False)[0])
+    sql = _squash(query.compile(pretty=False).sql)
 
     assert "(orders.status = 'paid' OR orders.status = 'shipped')" in sql
     assert "orders.amount BETWEEN 100 AND 500" in sql
