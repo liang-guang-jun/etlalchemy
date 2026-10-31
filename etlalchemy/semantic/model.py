@@ -10,13 +10,13 @@ unbound queries instead, which cannot be compiled until they are rebuilt from
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from etlalchemy.semantic.expression import Query
+from etlalchemy.semantic.expression import FieldRef, Query, RouteKey
 from etlalchemy.semantic.graph import GraphService
 from etlalchemy.semantic.measure import Measure
 from etlalchemy.semantic.relationship import (
@@ -47,6 +47,60 @@ class SemanticRegistry:
     entities: dict[str, SemanticEntity] = field(default_factory=dict)
     relationships: list[SemanticRelationship] = field(default_factory=list)
     measures: dict[str, Measure] = field(default_factory=dict)
+
+
+class RegisteredEntity:
+    """An entity bound with the fields picked for a join key.
+
+    ``SemanticModel.__getitem__`` returns one, so a join key reads as
+    ``model["orders"]["customer_id"]`` or
+    ``model["orders"][["tenant_id", "customer_id"]]``.
+    """
+
+    def __init__(
+        self,
+        entity: SemanticEntity,
+        selected_fields: Sequence[str] | None = None,
+    ) -> None:
+        """Bind ``entity`` with the fields picked so far."""
+        self.entity = entity
+        self.selected_fields: tuple[str, ...] = (
+            tuple(selected_fields) if selected_fields else ()
+        )
+
+    @property
+    def alias(self) -> str:
+        """Return the alias of the bound entity."""
+        return self.entity.alias
+
+    def __getitem__(self, fields: str | Sequence[str]) -> RegisteredEntity:
+        """Pick one field or several fields of the bound entity."""
+        names = (fields,) if isinstance(fields, str) else tuple(fields)
+        return RegisteredEntity(self.entity, names)
+
+    def as_collection(self) -> FieldCollection:
+        """Return the picked fields as a ``FieldCollection``.
+
+        Raises:
+            ValueError: If no field was picked, or a picked field is not in the
+                rowset of the entity.
+        """
+        if not self.selected_fields:
+            raise ValueError(
+                f"Entity {self.entity.alias!r} has no fields selected; pick "
+                "them with model['entity'][['field', ...]]"
+            )
+        fields = self.entity.relation.fields
+        missing = [name for name in self.selected_fields if name not in fields]
+        if missing:
+            raise ValueError(
+                f"Fields {missing} are not in the rowset of entity "
+                f"{self.entity.alias!r}"
+            )
+        return FieldCollection(
+            entity=self.entity,
+            fields=tuple(fields[name] for name in self.selected_fields),
+        )
 
 
 class MergeStrategy(StrEnum):
@@ -99,8 +153,40 @@ class SemanticModel:
         }
         return GraphService(edges, known_entities=known_entities)
 
+    def __getitem__(self, name: str) -> RegisteredEntity:
+        """Return a proxy for the entity registered under ``name``.
+
+        The proxy picks join keys, so a relationship reads as
+        ``model["orders"][["customer_id"]]``.
+
+        Args:
+            name: Registry name or alias of the entity.
+
+        Returns:
+            A proxy bound to the entity, with no fields picked yet.
+
+        Raises:
+            KeyError: If the model knows no entity by that name or alias.
+        """
+        entity = self.registry.entities.get(name)
+        if entity is None:
+            entity = next(
+                (
+                    item
+                    for item in self.registry.entities.values()
+                    if item.alias == name
+                ),
+                None,
+            )
+        if entity is None:
+            raise KeyError(f"Entity {name!r} is not registered in the model")
+        return RegisteredEntity(entity)
+
     def register_entity(self, name: str, relation: Rowset) -> SemanticEntity:
         """Register a Rowset under a name and return its entity.
+
+        Registering the same name twice is idempotent: the entity registered
+        first is returned.
 
         Args:
             name: Registry name of the entity; it is also the entity alias.
@@ -108,12 +194,10 @@ class SemanticModel:
 
         Returns:
             The registered entity.
-
-        Raises:
-            ValueError: If ``name`` is already registered.
         """
-        if name in self.registry.entities:
-            raise ValueError(f"Entity {name!r} is already registered")
+        existing = self.registry.entities.get(name)
+        if existing is not None:
+            return existing
         entity = SemanticEntity(id=uuid4(), alias=name, relation=relation)
         self.registry.entities[name] = entity
         return entity
@@ -121,10 +205,8 @@ class SemanticModel:
     def register_relationship(
         self,
         name: str,
-        source: SemanticEntity,
-        source_fields: Sequence[str],
-        target: SemanticEntity,
-        target_fields: Sequence[str],
+        source: RegisteredEntity | SemanticEntity,
+        target: RegisteredEntity | SemanticEntity,
         *,
         cardinality: Cardinality = Cardinality.ONE_TO_MANY,
         filter_direction: FilterDirection = FilterDirection.SINGLE,
@@ -132,16 +214,22 @@ class SemanticModel:
     ) -> SemanticRelationship:
         """Register an equi-join between two entities of this model.
 
-        The join keys are named, so callers do not build ``FieldCollection``
-        objects themselves.
+        The join keys travel with the operands, so they cannot disagree with
+        each other:
+
+            model.register_relationship(
+                "orders_customers",
+                source=model["orders"][["customer_id"]],
+                target=model["customers"][["id"]],
+            )
+
+        Registering the same name twice is idempotent: the relationship
+        registered first is returned.
 
         Args:
             name: Registry name of the relationship.
-            source: Entity the join starts from.
-            source_fields: Column names of ``source``, aligned with
-                ``target_fields``.
-            target: Entity the join points at.
-            target_fields: Column names of ``target``.
+            source: Sliced entity carrying the source join fields.
+            target: Sliced entity carrying the target join fields.
             cardinality: Data cardinality between the two ends.
             filter_direction: Whether filters propagate in one direction or
                 both.
@@ -152,15 +240,19 @@ class SemanticModel:
             The registered relationship.
 
         Raises:
-            ValueError: If ``name`` is already registered, or if a named field
-                is not in the rowset of its entity.
+            ValueError: If an operand is a bare entity, if no field was picked,
+                or if a picked field is not in the rowset of its entity.
         """
-        if any(item.name == name for item in self.registry.relationships):
-            raise ValueError(f"Relationship {name!r} is already registered")
+        existing = next(
+            (item for item in self.registry.relationships if item.name == name),
+            None,
+        )
+        if existing is not None:
+            return existing
         relationship = equi_join(
             name=name,
-            source=self._collection(source, source_fields),
-            target=self._collection(target, target_fields),
+            source=_join_collection(name, source),
+            target=_join_collection(name, target),
             cardinality=cardinality,
             filter_direction=filter_direction,
             priority=priority,
@@ -168,49 +260,46 @@ class SemanticModel:
         self.registry.relationships.append(relationship)
         return relationship
 
-    def register_measure(self, name: str, **kwargs: Any) -> Measure:
+    def register_measure(
+        self,
+        name: str,
+        field: FieldRef | None = None,
+        fields: tuple[FieldRef, ...] = (),
+        entity: str | None = None,
+        aggregation: str = "sum",
+        routes: Mapping[RouteKey, int] | None = None,
+    ) -> Measure:
         """Register a Measure under a name.
 
-        The keyword arguments are passed to :class:`~etlalchemy.semantic.Measure`
-        unchanged.
+        The arguments mirror :class:`~etlalchemy.semantic.Measure` exactly, so
+        an editor completes them. Registering the same name twice is
+        idempotent: the measure registered first is returned.
 
         Args:
             name: Registry name of the measure.
-            **kwargs: Fields of the measure, such as ``field``, ``fields``,
-                ``entity``, ``aggregation`` and ``routes``.
+            field: Single column the aggregation is computed over.
+            fields: Columns of a multi-column ``count_distinct``.
+            entity: Fact entity of a ``COUNT(*)`` measure.
+            aggregation: One of ``avg``, ``count``, ``count_distinct``,
+                ``max``, ``min`` or ``sum``.
+            routes: Default relationship priority per entity alias pair.
 
         Returns:
             The registered measure.
-
-        Raises:
-            ValueError: If ``name`` is already registered.
         """
-        if name in self.registry.measures:
-            raise ValueError(f"Measure {name!r} is already registered")
-        measure = Measure(name=name, **kwargs)
+        existing = self.registry.measures.get(name)
+        if existing is not None:
+            return existing
+        measure = Measure(
+            name=name,
+            field=field,
+            fields=fields,
+            entity=entity,
+            aggregation=aggregation,
+            routes=routes or {},
+        )
         self.registry.measures[name] = measure
         return measure
-
-    @staticmethod
-    def _collection(
-        entity: SemanticEntity,
-        names: Sequence[str],
-    ) -> FieldCollection:
-        """Return the fields of ``entity`` named by ``names``.
-
-        Raises:
-            ValueError: If a name is not a field of the entity's rowset.
-        """
-        fields = entity.relation.fields
-        missing = [name for name in names if name not in fields]
-        if missing:
-            raise ValueError(
-                f"Fields {missing} are not in the rowset of entity {entity.alias!r}"
-            )
-        return FieldCollection(
-            entity=entity,
-            fields=tuple(fields[name] for name in names),
-        )
 
     def diagram(self, *entity_refs: str) -> Diagram:
         """Draw the named entities and the relationships between them.
@@ -296,3 +385,22 @@ class _ModelQueryStarters:
     def limit(self, n: int) -> Query:
         """Start a query on this model with a row limit."""
         return Query(model=self._model).limit(n)
+
+
+def _join_collection(
+    relationship: str,
+    item: RegisteredEntity | SemanticEntity,
+) -> FieldCollection:
+    """Return the join key of one side of a relationship.
+
+    Raises:
+        ValueError: If ``item`` is a bare entity instead of a sliced one, or if
+            its picked fields are not in its rowset.
+    """
+    if isinstance(item, RegisteredEntity):
+        return item.as_collection()
+    raise ValueError(
+        f"Relationship {relationship!r} requires the join keys to be picked "
+        f"explicitly; pass model['{item.alias}'][['field']] instead of a bare "
+        "entity"
+    )

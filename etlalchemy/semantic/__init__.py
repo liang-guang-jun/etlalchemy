@@ -26,7 +26,12 @@ from etlalchemy.semantic.graph import (
 from etlalchemy.semantic.identifier import QualifiedName
 from etlalchemy.semantic.join import EquiJoin, ExpressionJoin, JoinCondition
 from etlalchemy.semantic.measure import Measure
-from etlalchemy.semantic.model import MergeStrategy, SemanticModel, SemanticRegistry
+from etlalchemy.semantic.model import (
+    MergeStrategy,
+    RegisteredEntity,
+    SemanticModel,
+    SemanticRegistry,
+)
 from etlalchemy.semantic.relationship import (
     Cardinality,
     FilterDirection,
@@ -101,6 +106,7 @@ __all__ = [
     "OrderBy",
     "Projection",
     "QualifiedName",
+    "RegisteredEntity",
     "Query",
     "RelationshipCycleError",
     "Rowset",
