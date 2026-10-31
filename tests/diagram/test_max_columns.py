@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from importlib import resources
 
 from etlalchemy.diagram.diagram import (
     Diagram,
@@ -133,12 +134,55 @@ def test_the_still_picture_names_the_hidden_columns() -> None:
 
 
 def test_the_canvas_data_carries_the_hidden_count() -> None:
-    """The canvas is told how many columns it is not drawing."""
+    """The canvas is told how many columns sit below the fold of the box."""
     document = _diagram().to_interactive_html()
 
     hidden = re.findall(r'"hiddenColumns": (\d+)', document)
 
     assert hidden == ["134", "66"]
+
+
+def test_trimming_keeps_every_column_for_the_canvas() -> None:
+    """The budget shortens the box, not the data behind it."""
+    node = _diagram().trimmed(20).nodes[0]
+
+    assert len(node.columns) == 20
+    assert node.all_columns is not None
+    assert len(node.all_columns) == 140
+
+
+def test_an_untrimmed_box_has_no_second_column_list() -> None:
+    """A box within the budget has nothing to keep aside."""
+    node = _diagram().trimmed(None).nodes[0]
+
+    assert node.all_columns is None
+
+
+def test_the_canvas_can_scroll_through_every_column() -> None:
+    """Every column reaches the canvas, so a reader can scroll to the last one."""
+    document = _diagram().to_interactive_html()
+
+    assert document.count('"name": "column_') == 140 + 72
+    assert '"name": "column_139"' in document
+
+
+def test_the_still_picture_stops_at_the_budget() -> None:
+    """An SVG cannot scroll, so it draws only the columns the box holds."""
+    html = _diagram().to_html()
+
+    assert "column_5" in html  # joined, kept
+    assert "column_100" in html  # primary key, kept
+    assert "column_139" not in html
+
+
+def test_both_canvas_copies_count_the_columns_below_the_fold() -> None:
+    """The bar follows the scroll in the source script and in the bundle."""
+    templates = resources.files("etlalchemy.diagram") / "templates"
+
+    for name in ("app.js", "canvas.js"):
+        source = (templates / name).read_text()
+        assert "ea-more" in source, name
+        assert "getBoundingClientRect().bottom" in source, name
 
 
 def test_picture_height_uses_an_explicit_height() -> None:

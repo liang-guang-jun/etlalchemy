@@ -217,7 +217,9 @@ def _data(
                         "pk": column.is_primary_key,
                         "joined": column.is_joined,
                     }
-                    for column in (node.columns if show_columns else ())
+                    for column in (
+                        (node.all_columns or node.columns) if show_columns else ()
+                    )
                 ],
                 "hiddenColumns": node.hidden_columns if show_columns else 0,
             }

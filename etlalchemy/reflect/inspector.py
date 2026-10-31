@@ -8,6 +8,7 @@ reflects the tables a call asks for, and saves the cache when it closes.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
@@ -150,6 +151,11 @@ class ReflectionSession:
         if self._selection and name not in self._selection:
             raise ValueError(f"Table {name!r} is not part of the reflected selection")
         reflected = self._live().table(name, self._effective_schema())
+        reflected = dataclasses.replace(
+            reflected,
+            catalog=self._catalog,
+            schema=self._schema,
+        )
         self._tables[name] = reflected
         self._dirty = True
         self._complete = self._complete or self._selection_complete()

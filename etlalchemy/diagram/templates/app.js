@@ -147,6 +147,37 @@ function EntityBox({ id, data }) {
   const list = React.useRef(null);
   const stood = React.useRef(new Map());
   const running = React.useRef(new Map());
+  const [below, setBelow] = React.useState(data.hiddenColumns);
+  const pending = React.useRef(0);
+
+  /**
+   * Count the columns still under the fold of the list.
+   *
+   * The card holds every column but shows a window of them, so the bar under
+   * the window is only honest while it is measured: it has to shrink as the
+   * reader scrolls and empty when the last column arrives. The rows are read
+   * against the window rather than against the scroll offset, because the
+   * offset of a row is relative to the card and not to the window it moves in.
+   */
+  const measure = React.useCallback(() => {
+    const element = list.current;
+    if (element === null || pending.current !== 0) return;
+    pending.current = window.requestAnimationFrame(() => {
+      pending.current = 0;
+      if (list.current !== element) return;
+      const fold = element.getBoundingClientRect().bottom;
+      let count = 0;
+      Array.from(element.children).forEach((row) => {
+        if (row.getBoundingClientRect().top >= fold) count += 1;
+      });
+      setBelow(count);
+    });
+  }, []);
+
+  React.useEffect(
+    () => () => window.cancelAnimationFrame(pending.current),
+    [],
+  );
 
   React.useLayoutEffect(() => {
     const element = list.current;
@@ -170,7 +201,8 @@ function EntityBox({ id, data }) {
       ));
     });
     stood.current = stands;
-  }, [columns]);
+    measure();
+  }, [columns, measure]);
 
   const over = joined.length > 0;
   const handle = { isConnectable: false, className: "ea-handle" };
@@ -192,7 +224,8 @@ function EntityBox({ id, data }) {
       () => element.classList.remove("ea-list--scrolling"),
       600,
     );
-  }, []);
+    measure();
+  }, [measure]);
 
   return h("div", { className: over ? "ea-card ea-card--over" : "ea-card" },
     h(Handle, Object.assign({}, handle, {
@@ -217,7 +250,7 @@ function EntityBox({ id, data }) {
       }))),
     data.hiddenColumns > 0
       ? h("p", { className: "ea-more" },
-        "- +" + data.hiddenColumns + " more columns")
+        below > 0 ? "- +" + below + " more columns" : "")
       : null,
     h(Handle, Object.assign({}, handle, {
       type: "source",
@@ -295,7 +328,7 @@ function App() {
     type: "entity",
     position: { x: node.x, y: node.y },
     data: node,
-    style: { width: node.width },
+    style: { width: node.width, height: node.height },
     sourcePosition: POSITIONS.source,
     targetPosition: POSITIONS.target,
   })));

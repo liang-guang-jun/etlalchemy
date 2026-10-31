@@ -137,12 +137,14 @@ def test_as_rowset_maps_cached_type_strings() -> None:
             ReflectedColumn(name="name", sa_type="VARCHAR(32)", nullable=True),
         ),
         primary_key=("id",),
+        catalog="main",
+        schema="geo",
     )
 
-    rowset = table.as_rowset(name="locations")
+    rowset = table.as_rowset()
 
     assert table.sqlalchemy_table is None
-    assert rowset.sql_name == "locations"
+    assert rowset.sql_name == "main.geo.cities"
     assert rowset.primary_key == ["id"]
     assert rowset.fields["id"].data_type == Integer()
     assert rowset.fields["name"].data_type == String(32)
@@ -178,16 +180,33 @@ def test_as_rowset_falls_back_when_the_live_table_lacks_a_column() -> None:
     assert rowset.fields["nickname"].data_type == String(12)
 
 
-def test_as_rowset_accepts_a_qualified_name() -> None:
-    """A reflected table can keep the catalog and schema it was read from."""
+def test_as_rowset_keeps_the_source_location() -> None:
+    """A rowset is named after the table as its source spells it."""
     table = ReflectedTable(
         name="test",
         columns=(ReflectedColumn(name="id", sa_type="INTEGER", nullable=False),),
         primary_key=("id",),
+        catalog="main",
+        schema="default",
     )
 
-    rowset = table.as_rowset(
-        QualifiedName("test", schema="default", catalog="main")
-    )
+    rowset = table.as_rowset()
 
+    assert rowset.name == QualifiedName("test", schema="default", catalog="main")
     assert rowset.sql_name == "main.default.test"
+
+
+def test_as_entity_renames_the_rowset_it_wraps() -> None:
+    """Only an entity names a rowset again, through its alias."""
+    table = ReflectedTable(
+        name="test",
+        columns=(ReflectedColumn(name="id", sa_type="INTEGER", nullable=False),),
+        primary_key=("id",),
+        catalog="main",
+        schema="default",
+    )
+
+    entity = table.as_entity(alias="samples")
+
+    assert entity.alias == "samples"
+    assert entity.relation.sql_name == "main.default.test"

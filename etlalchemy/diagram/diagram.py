@@ -53,8 +53,12 @@ class DiagramNode:
         columns: Columns of the entity, in declaration order.
         table: Qualified name of the table the entity stands for, or ``None``
             when the entity is not backed by a physical table.
-        hidden_columns: How many columns were dropped to keep the box short,
-            drawn as a last row that says so.
+        hidden_columns: How many columns are drawn only on request, shown as a
+            last row of the box.
+        all_columns: Every column of the entity when a column budget hid some
+            of them, and ``None`` otherwise. The still picture draws
+            :attr:`columns`; the canvas scrolls through :attr:`all_columns`, so
+            a budget shortens a box without losing anything.
     """
 
     entity_id: str
@@ -62,6 +66,7 @@ class DiagramNode:
     columns: tuple[DiagramColumn, ...] = ()
     table: str | None = None
     hidden_columns: int = 0
+    all_columns: tuple[DiagramColumn, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,8 +142,8 @@ class Diagram:
         Primary-key and joined columns are always kept, in their original
         order, because they are what the picture is read for. The remaining
         slots are filled with the other columns in declaration order, and the
-        boxes that lose columns carry the count in
-        :attr:`DiagramNode.hidden_columns`.
+        boxes that lose columns keep every row in
+        :attr:`DiagramNode.all_columns` so the canvas can scroll through them.
 
         Args:
             max_columns: Columns kept per box, or ``None`` to keep them all.
@@ -365,6 +370,7 @@ def _trimmed_node(node: DiagramNode, max_columns: int) -> DiagramNode:
         node,
         columns=tuple(columns[index] for index in kept),
         hidden_columns=len(columns) - len(kept),
+        all_columns=columns,
     )
 
 

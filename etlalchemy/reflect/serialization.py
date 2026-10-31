@@ -14,13 +14,15 @@ from etlalchemy.reflect.mapping import type_to_string
 from etlalchemy.reflect.table import ReflectedColumn, ReflectedTable
 
 #: Version of the payload written by :func:`tables_to_payload`.
-PAYLOAD_VERSION = 2
+PAYLOAD_VERSION = 3
 
 
 def table_to_dict(table: ReflectedTable) -> dict[str, object]:
     """Return the JSON-ready form of one reflected table."""
     return {
         "name": table.name,
+        "catalog": table.catalog,
+        "schema": table.schema,
         "primary_key": list(table.primary_key),
         "columns": [
             {
@@ -43,6 +45,8 @@ def table_from_dict(raw: Mapping[str, object]) -> ReflectedTable:
     primary_key = cast("Sequence[object]", raw.get("primary_key") or ())
     return ReflectedTable(
         name=str(raw["name"]),
+        catalog=_text(raw.get("catalog")),
+        schema=_text(raw.get("schema")),
         columns=tuple(
             ReflectedColumn(
                 name=str(column["name"]),
@@ -53,6 +57,11 @@ def table_from_dict(raw: Mapping[str, object]) -> ReflectedTable:
         ),
         primary_key=tuple(str(name) for name in primary_key),
     )
+
+
+def _text(value: object) -> str | None:
+    """Return a cached name, or ``None`` when the payload does not carry one."""
+    return None if value is None else str(value)
 
 
 def tables_to_payload(

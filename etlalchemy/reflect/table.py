@@ -39,7 +39,11 @@ class ReflectedColumn:
 
 @dataclasses.dataclass(frozen=True)
 class ReflectedTable:
-    """One reflected table: its name, columns and primary key.
+    """One reflected table: where it lives, its columns and primary key.
+
+    ``catalog`` and ``schema`` are where the table was reflected from, so a
+    rowset made from it keeps the qualified name of the source table instead of
+    losing it to a bare name.
 
     ``sqlalchemy_table`` is the live ``Table`` object when the table was
     reflected from a database. It lets :meth:`as_rowset` use the authoritative
@@ -50,15 +54,22 @@ class ReflectedTable:
     name: str
     columns: tuple[ReflectedColumn, ...]
     primary_key: tuple[str, ...]
+    catalog: str | None = None
+    schema: str | None = None
     sqlalchemy_table: sa.Table | None = None
 
-    def as_rowset(self, name: QualifiedName | str | None = None) -> Rowset:
-        """Return this table as a semantic ``Rowset``.
+    @property
+    def qualified_name(self) -> QualifiedName:
+        """Return the name of the table as its source spells it."""
+        return QualifiedName(self.name, schema=self.schema, catalog=self.catalog)
 
-        Args:
-            name: Rowset name; the bare table name when ``None``. Pass a
-                :class:`~etlalchemy.semantic.identifier.QualifiedName` to keep
-                the schema and the catalog the table was reflected from.
+    def as_rowset(self) -> Rowset:
+        """Return this table as a semantic ``Rowset`` under its source name.
+
+        The rowset keeps the catalog and the schema the table was reflected
+        from, so it is never renamed to say where it comes from. Only
+        :meth:`as_entity` names it again, because an entity wraps the rowset in
+        a container of its own.
 
         Returns:
             A table-backed rowset with one field per column.
@@ -70,16 +81,24 @@ class ReflectedTable:
             )
             for column in self.columns
         }
-        rowset_name = name if name is not None else QualifiedName(self.name)
         return Rowset(
-            name=rowset_name,
+            name=self.qualified_name,
             kind=Materialization.TABLE,
             fields=fields,
             primary_key=list(self.primary_key) or None,
         )
 
     def as_entity(self, alias: str | None = None) -> SemanticEntity:
-        """Return a new entity over a new rowset of this table."""
+        """Return a new entity over a new rowset of this table.
+
+        Args:
+            alias: Entity alias; the table name when ``None``. The alias is the
+                name the entity gives the rowset it holds, the way a container
+                labels its contents.
+
+        Returns:
+            A new entity with its own id and its own rowset.
+        """
         return SemanticEntity(
             id=uuid4(),
             alias=alias or self.name,

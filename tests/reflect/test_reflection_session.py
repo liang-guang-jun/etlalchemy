@@ -153,3 +153,54 @@ def test_cached_tables_still_build_a_rowset(tmp_path: Path) -> None:
     assert users.name == "users"
     assert users.sqlalchemy_table is None
     assert users.as_rowset().fields["name"].data_type == String(20)
+
+
+def test_session_records_where_a_table_was_reflected(tmp_path: Path) -> None:
+    """A reflected table carries the catalog and the schema of its source."""
+    source = sqlite_source(tmp_path)
+    session = ReflectionSession(
+        source,
+        repository=InMemoryReflectionRepository(),
+        catalog="main",
+        schema="shop",
+        inspector_factory=lambda source: RecordingInspector(names=("alpha",)),
+    )
+
+    table = session.table("alpha")
+
+    assert table.catalog == "main"
+    assert table.schema == "shop"
+    assert table.as_rowset().sql_name == "main.shop.alpha"
+
+
+def test_the_cache_keeps_the_source_location(tmp_path: Path) -> None:
+    """A table read back from a file cache still names the table it came from."""
+    source = sqlite_source(tmp_path)
+    repository = JsonReflectionRepository(tmp_path / "store")
+    fake = RecordingInspector(names=("alpha",))
+
+    def inspector(source: object) -> RecordingInspector:
+        return fake
+
+    with ReflectionSession(
+        source,
+        repository=repository,
+        catalog="main",
+        schema="shop",
+        inspector_factory=inspector,
+    ) as session:
+        session.table("alpha")
+
+    with ReflectionSession(
+        source,
+        repository=repository,
+        catalog="main",
+        schema="shop",
+        inspector_factory=inspector,
+    ) as reloaded:
+        cached = reloaded.table("alpha")
+
+    assert fake.calls.count("table:alpha:main.shop") == 1
+    assert cached.catalog == "main"
+    assert cached.schema == "shop"
+    assert cached.as_rowset().sql_name == "main.shop.alpha"
