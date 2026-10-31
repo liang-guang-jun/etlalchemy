@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Callable
 from uuid import UUID, uuid5
 
 import pytest
@@ -31,11 +32,6 @@ SIMPLE_AGGREGATIONS = ("sum", "count", "avg", "min", "max")
 
 #: Aggregations that require their single field.
 FIELD_REQUIRED_AGGREGATIONS = ("sum", "avg", "min", "max")
-
-
-def _squash(sql: str) -> str:
-    """Collapse whitespace so assertions survive pretty formatting."""
-    return " ".join(sql.split())
 
 
 def _orders() -> SemanticEntity:
@@ -251,14 +247,16 @@ def test_simple_aggregations_still_wrap_the_single_field() -> None:
     assert node.sql() == "SUM(orders.amount)"
 
 
-def test_multi_column_count_distinct_renders_natively_on_databricks() -> None:
+def test_multi_column_count_distinct_renders_natively_on_databricks(
+    squash: Callable[[str], str],
+) -> None:
     """Databricks keeps the columns in one COUNT(DISTINCT ...)."""
     model = _model()
     query = model.q.calculate("unique_user_product")
 
     sql = query.compile(dialect="databricks").sql
 
-    assert "COUNT(DISTINCT orders.user_id, orders.order_id)" in _squash(sql)
+    assert "COUNT(DISTINCT orders.user_id, orders.order_id)" in squash(sql)
 
 
 def test_count_distinct_fields_must_share_the_measure_entity() -> None:

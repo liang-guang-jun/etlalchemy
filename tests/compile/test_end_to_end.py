@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Callable
 from uuid import UUID, uuid5
 
 import pytest
@@ -43,11 +44,6 @@ from etlalchemy.semantic import (
 from sqlglot import exp
 
 NAMESPACE = UUID("00000000-0000-0000-0000-000000000000")
-
-
-def _squash(sql: str) -> str:
-    """Collapse whitespace so assertions survive pretty formatting."""
-    return " ".join(sql.split())
 
 
 def _entity(alias: str, *fields: str) -> SemanticEntity:
@@ -156,7 +152,9 @@ def _model(*, cyclic: bool = False) -> SemanticModel:
     return SemanticModel(name="crm", registry=registry)
 
 
-def test_compiles_a_dimension_and_measure_with_limit() -> None:
+def test_compiles_a_dimension_and_measure_with_limit(
+    squash: Callable[[str], str],
+) -> None:
     """A single-entity query selects, groups, orders and limits."""
     model = _model()
     query = model.q.group_by("orders.status").calculate("revenue").limit(10)
@@ -174,13 +172,15 @@ def test_compiles_a_dimension_and_measure_with_limit() -> None:
     assert isinstance(source.this, exp.Table)
     assert source.this.name == "orders"
     assert not statement.args.get("joins")
-    assert "SUM(orders.total) AS revenue" in _squash(compiled.sql)
-    assert "GROUP BY orders.status" in _squash(compiled.sql)
-    assert "LIMIT 10" in _squash(compiled.sql)
+    assert "SUM(orders.total) AS revenue" in squash(compiled.sql)
+    assert "GROUP BY orders.status" in squash(compiled.sql)
+    assert "LIMIT 10" in squash(compiled.sql)
     assert compiled.params == []
 
 
-def test_dimension_alias_is_used_as_the_output_name() -> None:
+def test_dimension_alias_is_used_as_the_output_name(
+    squash: Callable[[str], str],
+) -> None:
     """A dimension alias becomes the projected column name and the ordering key."""
     model = _model()
     query = (
@@ -196,7 +196,7 @@ def test_dimension_alias_is_used_as_the_output_name() -> None:
         "order_status",
         "revenue",
     ]
-    assert "ORDER BY order_status" in _squash(sql)
+    assert "ORDER BY order_status" in squash(sql)
 
 
 def test_order_by_rejects_an_unknown_dimension_alias() -> None:
@@ -208,17 +208,21 @@ def test_order_by_rejects_an_unknown_dimension_alias() -> None:
         query.compile()
 
 
-def test_compiles_without_group_by_when_there_are_no_dimensions() -> None:
+def test_compiles_without_group_by_when_there_are_no_dimensions(
+    squash: Callable[[str], str],
+) -> None:
     """A pure aggregate query has no GROUP BY clause."""
     model = _model()
 
     sql = model.q.calculate("revenue").compile().sql
 
-    assert "GROUP BY" not in _squash(sql)
-    assert "SUM(orders.total) AS revenue" in _squash(sql)
+    assert "GROUP BY" not in squash(sql)
+    assert "SUM(orders.total) AS revenue" in squash(sql)
 
 
-def test_compiles_a_left_join_when_the_base_is_on_the_many_side() -> None:
+def test_compiles_a_left_join_when_the_base_is_on_the_many_side(
+    squash: Callable[[str], str],
+) -> None:
     """A ONE_TO_MANY edge joins with LEFT from either end."""
     model = _model()
 
@@ -230,12 +234,14 @@ def test_compiles_a_left_join_when_the_base_is_on_the_many_side() -> None:
     assert len(joins) == 1
     # The edge is ONE_TO_MANY in the SINGLE direction, so it is LEFT even though
     # the base sits on the many end: unmatched orders keep NULL customers.
-    assert "LEFT JOIN crm.orders AS orders" in _squash(sql)
-    assert "ON orders.customer_id = customers.id" in _squash(sql)
-    assert "COUNT(customers.id) AS customer_count" in _squash(sql)
+    assert "LEFT JOIN crm.orders AS orders" in squash(sql)
+    assert "ON orders.customer_id = customers.id" in squash(sql)
+    assert "COUNT(customers.id) AS customer_count" in squash(sql)
 
 
-def test_compiles_a_left_join_from_the_base_to_the_many_side() -> None:
+def test_compiles_a_left_join_from_the_base_to_the_many_side(
+    squash: Callable[[str], str],
+) -> None:
     """A fact-table base keeps all its rows when joining a dimension."""
     model = _model()
 
@@ -243,11 +249,13 @@ def test_compiles_a_left_join_from_the_base_to_the_many_side() -> None:
     # shape is still the behaviour under test here.
     sql = model.q.group_by("customers.region").calculate("min_total").compile().sql
 
-    assert "LEFT JOIN crm.customers AS customers" in _squash(sql)
-    assert "ON orders.customer_id = customers.id" in _squash(sql)
+    assert "LEFT JOIN crm.customers AS customers" in squash(sql)
+    assert "ON orders.customer_id = customers.id" in squash(sql)
 
 
-def test_query_routes_pick_a_different_relationship() -> None:
+def test_query_routes_pick_a_different_relationship(
+    squash: Callable[[str], str],
+) -> None:
     """An explicit route switches the join to the lower-priority edge."""
     model = _model()
     query = (
@@ -258,11 +266,13 @@ def test_query_routes_pick_a_different_relationship() -> None:
 
     sql = query.compile().sql
 
-    assert "ON orders.region = customers.region" in _squash(sql)
-    assert "customer_id" not in _squash(sql)
+    assert "ON orders.region = customers.region" in squash(sql)
+    assert "customer_id" not in squash(sql)
 
 
-def test_literals_are_inlined_by_default() -> None:
+def test_literals_are_inlined_by_default(
+    squash: Callable[[str], str],
+) -> None:
     """The default mode inlines literals and returns no parameters."""
     model = _model()
     query = (
@@ -273,7 +283,7 @@ def test_literals_are_inlined_by_default() -> None:
 
     compiled = query.compile()
 
-    assert "'paid'" in _squash(compiled.sql)
+    assert "'paid'" in squash(compiled.sql)
     assert "%(param0)s" not in compiled.sql
     assert compiled.params == []
 
@@ -353,7 +363,9 @@ def test_inline_literals_false_parameterizes_the_statement() -> None:
     assert compiled.params == {"param0": "paid"}
 
 
-def test_logical_predicates_bind_both_literals() -> None:
+def test_logical_predicates_bind_both_literals(
+    squash: Callable[[str], str],
+) -> None:
     """An AND predicate binds every literal in order."""
     model = _model()
     query = (
@@ -367,7 +379,7 @@ def test_logical_predicates_bind_both_literals() -> None:
     assert compiled.params == {"param0": "paid", "param1": 100}
     assert "%(param0)s" in compiled.sql
     assert "%(param1)s" in compiled.sql
-    assert "AND" in _squash(compiled.sql)
+    assert "AND" in squash(compiled.sql)
 
 
 def test_pretty_controls_line_breaks() -> None:
@@ -382,7 +394,9 @@ def test_pretty_controls_line_breaks() -> None:
     assert "\n" not in compact_sql
 
 
-def test_order_by_uses_the_measure_alias() -> None:
+def test_order_by_uses_the_measure_alias(
+    squash: Callable[[str], str],
+) -> None:
     """Ordering by a measure alias renders the alias in ORDER BY."""
     model = _model()
 
@@ -394,7 +408,7 @@ def test_order_by_uses_the_measure_alias() -> None:
         .sql
     )
 
-    assert "ORDER BY revenue DESC" in _squash(sql)
+    assert "ORDER BY revenue DESC" in squash(sql)
 
 
 def _ordered_query(model: SemanticModel) -> Query:
@@ -418,13 +432,15 @@ def test_no_nulls_clause_is_rendered_by_default() -> None:
         assert "NULLS LAST" not in sql
 
 
-def test_nulls_first_false_renders_nulls_last_for_both_directions() -> None:
+def test_nulls_first_false_renders_nulls_last_for_both_directions(
+    squash: Callable[[str], str],
+) -> None:
     """nulls_first=False puts NULLS LAST on ASC and DESC terms alike."""
     model = _model()
     query = _ordered_query(model)
 
     sql = query.compile(nulls_first=False).sql
-    normalized = _squash(sql)
+    normalized = squash(sql)
 
     assert "order_status NULLS LAST" in normalized
     assert "revenue DESC NULLS LAST" in normalized
@@ -433,24 +449,28 @@ def test_nulls_first_false_renders_nulls_last_for_both_directions() -> None:
     # An explicit placement is identical on every dialect.
     databricks_sql = query.compile(dialect="databricks", nulls_first=False).sql
     assert (
-        _squash(databricks_sql).split("ORDER BY")[1] == normalized.split("ORDER BY")[1]
+        squash(databricks_sql).split("ORDER BY")[1] == normalized.split("ORDER BY")[1]
     )
 
 
-def test_nulls_first_true_renders_nulls_first_for_both_directions() -> None:
+def test_nulls_first_true_renders_nulls_first_for_both_directions(
+    squash: Callable[[str], str],
+) -> None:
     """nulls_first=True puts NULLS FIRST on ASC and DESC terms alike."""
     model = _model()
     query = _ordered_query(model)
 
     sql = query.compile(nulls_first=True).sql
-    normalized = _squash(sql)
+    normalized = squash(sql)
 
     assert "order_status NULLS FIRST" in normalized
     assert "revenue DESC NULLS FIRST" in normalized
     assert "NULLS LAST" not in normalized
 
 
-def test_default_null_placement_depends_on_the_dialect() -> None:
+def test_default_null_placement_depends_on_the_dialect(
+    squash: Callable[[str], str],
+) -> None:
     """With nulls_first=None the database default decides where NULLs sort."""
     model = _model()
     query = _ordered_query(model)
@@ -464,17 +484,19 @@ def test_default_null_placement_depends_on_the_dialect() -> None:
     for sql in (postgres_sql, databricks_sql):
         assert "NULLS FIRST" not in sql
         assert "NULLS LAST" not in sql
-    assert "ORDER BY order_status" in _squash(postgres_sql)
-    assert "ORDER BY order_status" in _squash(databricks_sql)
+    assert "ORDER BY order_status" in squash(postgres_sql)
+    assert "ORDER BY order_status" in squash(databricks_sql)
 
 
-def test_count_measure_maps_to_count() -> None:
+def test_count_measure_maps_to_count(
+    squash: Callable[[str], str],
+) -> None:
     """The count aggregation renders COUNT over the measure field."""
     model = _model()
 
     sql = model.q.calculate("order_count").compile().sql
 
-    assert "COUNT(orders.id) AS order_count" in _squash(sql)
+    assert "COUNT(orders.id) AS order_count" in squash(sql)
 
 
 def test_compile_query_entry_point_matches_query_compile() -> None:
@@ -511,7 +533,9 @@ def test_cyclic_relationship_selection_is_rejected() -> None:
         model.q.calculate("revenue").compile()
 
 
-def test_multi_fact_query_builds_ctes_and_merges_them() -> None:
+def test_multi_fact_query_builds_ctes_and_merges_them(
+    squash: Callable[[str], str],
+) -> None:
     """Two fact entities produce two CTEs joined by FULL OUTER JOIN."""
     model = _model()
     query = (
@@ -523,7 +547,7 @@ def test_multi_fact_query_builds_ctes_and_merges_them() -> None:
 
     sql = query.compile(dialect="databricks").sql
 
-    normalized = _squash(sql)
+    normalized = squash(sql)
     assert normalized.startswith("WITH orders_agg AS")
     assert "refunds_agg AS" in normalized
     assert "FULL OUTER JOIN refunds_agg" in normalized
@@ -721,7 +745,9 @@ def test_one_to_many_always_uses_left() -> None:
     assert choose_join_type(users_to_orders, "orders") == "LEFT"
 
 
-def test_filter_references_trigger_a_join() -> None:
+def test_filter_references_trigger_a_join(
+    squash: Callable[[str], str],
+) -> None:
     """A filter on another entity pulls that entity into the join plan."""
     model = _model()
     query = (
@@ -732,7 +758,7 @@ def test_filter_references_trigger_a_join() -> None:
 
     sql = query.compile().sql
 
-    assert "LEFT JOIN crm.customers AS customers" in _squash(sql)
+    assert "LEFT JOIN crm.customers AS customers" in squash(sql)
 
 
 def _linked_model(
@@ -775,7 +801,9 @@ def test_single_direction_filter_on_source_marks_pushdown() -> None:
     assert step.join_type == "LEFT"
 
 
-def test_both_direction_filter_on_target_forces_inner_join() -> None:
+def test_both_direction_filter_on_target_forces_inner_join(
+    squash: Callable[[str], str],
+) -> None:
     """A target-side filter on a BOTH edge becomes an INNER JOIN plus a warning."""
     model = _linked_model(direction=FilterDirection.BOTH)
     query = (
@@ -791,10 +819,12 @@ def test_both_direction_filter_on_target_forces_inner_join() -> None:
     assert step.join_type == "INNER"
     assert step.semi_join is False
     assert any("BOTH" in warning for warning in context.report.warnings)
-    assert "INNER JOIN crm.customers" in _squash(query.compile().sql)
+    assert "INNER JOIN crm.customers" in squash(query.compile().sql)
 
 
-def test_left_join_filtered_on_target_warns_about_inner_semantics() -> None:
+def test_left_join_filtered_on_target_warns_about_inner_semantics(
+    squash: Callable[[str], str],
+) -> None:
     """A LEFT join plus a target-side filter behaves like an INNER join."""
     model = _model()
     query = (
@@ -806,7 +836,7 @@ def test_left_join_filtered_on_target_warns_about_inner_semantics() -> None:
     compiled = query.compile()
 
     # The plan keeps the LEFT JOIN and only reports the semantic downgrade.
-    assert "LEFT JOIN crm.customers" in _squash(compiled.sql)
+    assert "LEFT JOIN crm.customers" in squash(compiled.sql)
     assert any(
         "behaves like an INNER JOIN" in warning for warning in compiled.report.warnings
     )
@@ -837,7 +867,9 @@ def test_route_pair_unused_by_the_query_is_rejected() -> None:
         query.compile()
 
 
-def test_single_fact_measures_do_not_use_a_cte() -> None:
+def test_single_fact_measures_do_not_use_a_cte(
+    squash: Callable[[str], str],
+) -> None:
     """Several measures on one entity keep the plain single-select shape."""
     model = _model()
     query = (
@@ -849,7 +881,7 @@ def test_single_fact_measures_do_not_use_a_cte() -> None:
 
     sql = query.compile().sql
 
-    normalized = _squash(sql)
+    normalized = squash(sql)
     assert not normalized.startswith("WITH")
     assert "SUM(orders.total) AS revenue" in normalized
     assert "COUNT(orders.id) AS order_count" in normalized
@@ -857,7 +889,9 @@ def test_single_fact_measures_do_not_use_a_cte() -> None:
     assert "ORDER BY revenue DESC" in normalized
 
 
-def test_multi_fact_cte_groups_by_every_dimension() -> None:
+def test_multi_fact_cte_groups_by_every_dimension(
+    squash: Callable[[str], str],
+) -> None:
     """Each CTE groups by the dimensions it can provide."""
     model = _model()
     query = (
@@ -868,7 +902,7 @@ def test_multi_fact_cte_groups_by_every_dimension() -> None:
 
     sql = query.compile(dialect="databricks").sql
 
-    normalized = _squash(sql)
+    normalized = squash(sql)
     assert "GROUP BY orders.status, customers.region" in normalized
     assert "refunds_agg AS" in normalized
     statement = sqlglot.parse_one(sql, read="databricks")
@@ -897,7 +931,9 @@ def test_unreachable_dimension_in_strict_mode_is_rejected() -> None:
     assert "'orders'" in message
 
 
-def test_unreachable_dimension_can_be_nulled_in_lenient_mode() -> None:
+def test_unreachable_dimension_can_be_nulled_in_lenient_mode(
+    squash: Callable[[str], str],
+) -> None:
     """Lenient mode projects NULL for the dimension and warns about it."""
     model = _model()
     query = (
@@ -929,7 +965,7 @@ def test_unreachable_dimension_can_be_nulled_in_lenient_mode() -> None:
 
     sql = query.compile(dialect="databricks", unreachable_dimensions="null").sql
 
-    normalized = _squash(sql)
+    normalized = squash(sql)
     assert "NULL AS campaign" in normalized
     assert "COALESCE(orders_agg.campaign, refunds_agg.campaign)" in normalized
     assert [
@@ -949,7 +985,9 @@ def test_invalid_unreachable_dimensions_mode_is_rejected() -> None:
         model.q.calculate("revenue").compile(unreachable_dimensions="ignore")
 
 
-def test_filters_are_pushed_into_the_matching_cte() -> None:
+def test_filters_are_pushed_into_the_matching_cte(
+    squash: Callable[[str], str],
+) -> None:
     """Each fact CTE only receives the predicates it can evaluate."""
     model = _model()
     query = (
@@ -975,7 +1013,7 @@ def test_filters_are_pushed_into_the_matching_cte() -> None:
     # orders_agg receives the orders filter; this is the intended behaviour.
     assert pushed == {"orders_agg": 1, "refunds_agg": 1}
 
-    normalized = _squash(query.compile(dialect="databricks").sql)
+    normalized = squash(query.compile(dialect="databricks").sql)
     orders_cte, refunds_cte = normalized.split("refunds_agg AS")
     assert "orders.status = 'paid'" in orders_cte
     assert "refunds.reason = 'damaged'" not in orders_cte

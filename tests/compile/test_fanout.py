@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 from etlalchemy.compile.compiler import compile_query
 from etlalchemy.compile.context import CompileContext
@@ -20,11 +22,6 @@ from etlalchemy.semantic import (
 from etlalchemy.semantic.measure import SUPPORTED_AGGREGATIONS
 
 from builders import entity, relationship
-
-
-def _squash(sql: str) -> str:
-    """Collapse whitespace so assertions survive pretty formatting."""
-    return " ".join(sql.split())
 
 
 def _measure(name: str, entity_alias: str, aggregation: str = "sum") -> Measure:
@@ -167,7 +164,9 @@ def test_forward_one_to_many_is_not_a_risk() -> None:
     assert _risks(model, query) == ()
 
 
-def test_count_distinct_compiles_into_a_distinct_count() -> None:
+def test_count_distinct_compiles_into_a_distinct_count(
+    squash: Callable[[str], str],
+) -> None:
     """count_distinct renders COUNT(DISTINCT column)."""
     teams = entity("teams")
     members = entity("members")
@@ -183,7 +182,7 @@ def test_count_distinct_compiles_into_a_distinct_count() -> None:
 
     sql = query.compile().sql
 
-    assert "COUNT(DISTINCT members.id) AS member_count" in _squash(sql)
+    assert "COUNT(DISTINCT members.id) AS member_count" in squash(sql)
 
 
 def test_compile_rejects_a_summed_measure_that_fans_out() -> None:
@@ -201,14 +200,16 @@ def test_compile_rejects_a_summed_measure_that_fans_out() -> None:
     assert "Pre-aggregate the measure or change the aggregation." in message
 
 
-def test_compile_reports_warning_level_fanout_risks() -> None:
+def test_compile_reports_warning_level_fanout_risks(
+    squash: Callable[[str], str],
+) -> None:
     """The report carries the fanout risks that only warn."""
     model = _model(aggregation="min")
     query = model.q.group_by("members.id").calculate("team_total")
 
     compiled = query.compile()
 
-    assert "MIN(teams.id) AS team_total" in _squash(compiled.sql)
+    assert "MIN(teams.id) AS team_total" in squash(compiled.sql)
     assert compiled.params == []
     assert [risk.measure for risk in compiled.report.fanout_risks] == ["team_total"]
     assert compiled.report.fanout_risks[0].severity == "warning"

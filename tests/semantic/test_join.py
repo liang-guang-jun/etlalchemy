@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 import sqlglot
 from etlalchemy.compile.compiler import _warn_expression_joins
@@ -30,11 +32,6 @@ from etlalchemy.semantic.join import JoinCondition
 from etlalchemy.semantic.relationship import SemanticRelationship
 
 from builders import entity, relationship
-
-
-def _squash(sql: str) -> str:
-    """Collapse whitespace so assertions survive pretty formatting."""
-    return " ".join(sql.split())
 
 
 def _parameter(value: object) -> str:
@@ -285,7 +282,9 @@ def _model() -> SemanticModel:
     return SemanticModel(name="crm", registry=registry)
 
 
-def test_expression_join_compiles_into_the_on_clause() -> None:
+def test_expression_join_compiles_into_the_on_clause(
+    squash: Callable[[str], str],
+) -> None:
     """The compiled join uses the rendered expression as its condition."""
     model = _model()
     query = model.q.group_by("patterns.pattern").calculate("revenue")
@@ -294,7 +293,7 @@ def test_expression_join_compiles_into_the_on_clause() -> None:
 
     statement = sqlglot.parse_one(sql, read="postgres")
     joined = statement.args["joins"][0]
-    on_clause = _squash(joined.args["on"].sql())
+    on_clause = squash(joined.args["on"].sql())
     assert "REGEXP_LIKE(orders.status, patterns.pattern)" in on_clause
 
 
@@ -335,7 +334,9 @@ def test_expression_join_stays_silent_with_inline_literals() -> None:
     assert context.report.warnings == []
 
 
-def test_equi_join_stays_silent_when_literals_are_parameterized() -> None:
+def test_equi_join_stays_silent_when_literals_are_parameterized(
+    squash: Callable[[str], str],
+) -> None:
     """Equi joins never need the expression warning."""
     orders, customers = _orders(), _customers()
     model = SemanticModel(
@@ -362,10 +363,12 @@ def test_equi_join_stays_silent_when_literals_are_parameterized() -> None:
 
     sql = query.compile(inline_literals=False).sql
 
-    assert "ON orders.customer_id = customers.id" in _squash(sql)
+    assert "ON orders.customer_id = customers.id" in squash(sql)
 
 
-def test_plain_relationship_still_joins_on_ids() -> None:
+def test_plain_relationship_still_joins_on_ids(
+    squash: Callable[[str], str],
+) -> None:
     """The legacy helper keeps producing equality joins."""
     a, b = entity("a"), entity("b")
     model = SemanticModel(
@@ -384,4 +387,4 @@ def test_plain_relationship_still_joins_on_ids() -> None:
 
     sql = query.compile().sql
 
-    assert "b.id = a.id" in _squash(sql) or "a.id = b.id" in _squash(sql)
+    assert "b.id = a.id" in squash(sql) or "a.id = b.id" in squash(sql)

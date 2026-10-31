@@ -5,32 +5,48 @@ from __future__ import annotations
 import json
 import re
 import sys
+from collections.abc import Callable
 from importlib import resources
 from typing import Any
 
 import pytest
-from diagram_fixtures import make_entity, model_of, relationship
 from etlalchemy.diagram.interactive import picture_height
-from etlalchemy.semantic import FilterDirection, Integer, SemanticModel, String
+from etlalchemy.semantic import (
+    FilterDirection,
+    Integer,
+    SemanticEntity,
+    SemanticModel,
+    SemanticRelationship,
+    String,
+)
 
 
-def make_model() -> SemanticModel:
+@pytest.fixture
+def make_model(
+    make_entity: Callable[..., SemanticEntity],
+    model_of: Callable[..., SemanticModel],
+    relationship: Callable[..., SemanticRelationship],
+) -> Callable[[], SemanticModel]:
     """Build the two-entity model the interactive tests draw."""
-    customer = make_entity("Customer", [("id", Integer()), ("name", String())])
-    order = make_entity("Order", [("id", Integer()), ("customer_id", Integer())])
-    return model_of(
-        {"Customer": customer, "Order": order},
-        [
-            relationship(
-                "customer_orders",
-                customer,
-                "id",
-                order,
-                "customer_id",
-                filter_direction=FilterDirection.BOTH,
-            )
-        ],
-    )
+
+    def build() -> SemanticModel:
+        customer = make_entity("Customer", [("id", Integer()), ("name", String())])
+        order = make_entity("Order", [("id", Integer()), ("customer_id", Integer())])
+        return model_of(
+            {"Customer": customer, "Order": order},
+            [
+                relationship(
+                    "customer_orders",
+                    customer,
+                    "id",
+                    order,
+                    "customer_id",
+                    filter_direction=FilterDirection.BOTH,
+                )
+            ],
+        )
+
+    return build
 
 
 def data_of(html: str) -> dict[str, Any]:
@@ -54,28 +70,36 @@ def edges_of(html: str) -> list[dict[str, Any]]:
     return edges
 
 
-def test_interactive_html_is_light_unless_asked_otherwise() -> None:
+def test_interactive_html_is_light_unless_asked_otherwise(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
 
     assert '<html lang="en" data-theme="light">' in html
     assert data_of(html)["theme"] == "light"
 
 
-def test_interactive_html_can_be_asked_for_the_dark_palette() -> None:
+def test_interactive_html_can_be_asked_for_the_dark_palette(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html(theme="dark")
 
     assert '<html lang="en" data-theme="dark">' in html
     assert data_of(html)["theme"] == "dark"
 
 
-def test_interactive_html_leaves_the_theme_to_the_reader_when_asked() -> None:
+def test_interactive_html_leaves_the_theme_to_the_reader_when_asked(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html(theme="auto")
 
     assert '<html lang="en">' in html
     assert data_of(html)["theme"] == "auto"
 
 
-def test_render_passes_the_theme_to_the_still_picture() -> None:
+def test_render_passes_the_theme_to_the_still_picture(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     pytest.importorskip("IPython.display")
     diagram = make_model().diagram()
 
@@ -91,14 +115,18 @@ def test_render_passes_the_theme_to_the_still_picture() -> None:
     )
 
 
-def test_interactive_html_is_a_standalone_document() -> None:
+def test_interactive_html_is_a_standalone_document(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
 
     assert html.startswith("<!doctype html>")
     assert 'id="etlalchemy-canvas"' in html
 
 
-def test_interactive_html_draws_itself_with_no_network() -> None:
+def test_interactive_html_draws_itself_with_no_network(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     """A notebook draws the page inside a sandbox, where a CDN may be unreachable."""
     html = make_model().diagram().to_interactive_html()
 
@@ -108,7 +136,9 @@ def test_interactive_html_draws_itself_with_no_network() -> None:
     assert "importmap" not in html
 
 
-def test_interactive_html_carries_the_canvas_it_draws_with() -> None:
+def test_interactive_html_carries_the_canvas_it_draws_with(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
 
     assert "react-flow__node" in html
@@ -139,14 +169,18 @@ def test_interactive_templates_ship_with_the_package() -> None:
         assert (templates / name).is_file(), name
 
 
-def test_interactive_html_refers_to_its_arrowheads_by_id() -> None:
+def test_interactive_html_refers_to_its_arrowheads_by_id(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
 
     assert '<marker id="ea-arrow"' in html
     assert "url(#ea-arrow" not in html
 
 
-def test_interactive_html_keeps_its_actions_in_the_controls() -> None:
+def test_interactive_html_keeps_its_actions_in_the_controls(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
 
     assert "Auto layout" in html
@@ -154,7 +188,9 @@ def test_interactive_html_keeps_its_actions_in_the_controls() -> None:
     assert "ea-group" not in html
 
 
-def test_picture_height_leaves_room_around_the_picture() -> None:
+def test_picture_height_leaves_room_around_the_picture(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     diagram = make_model().diagram()
     empty = SemanticModel(name="Empty").diagram()
 
@@ -165,21 +201,27 @@ def test_picture_height_leaves_room_around_the_picture() -> None:
     )
 
 
-def test_interactive_html_carries_the_static_picture_as_a_fallback() -> None:
+def test_interactive_html_carries_the_static_picture_as_a_fallback(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
 
     assert "<svg" in html
     assert "customer_id" in html
 
 
-def test_interactive_html_embeds_every_box_and_line() -> None:
+def test_interactive_html_embeds_every_box_and_line(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
 
     assert [node["name"] for node in nodes_of(html)] == ["Customer", "Order"]
     assert [edge["name"] for edge in edges_of(html)] == ["customer_orders"]
 
 
-def test_interactive_html_embeds_the_columns_with_their_marks() -> None:
+def test_interactive_html_embeds_the_columns_with_their_marks(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
     order = next(node for node in nodes_of(html) if node["name"] == "Order")
     columns = {column["name"]: column for column in order["columns"]}
@@ -190,7 +232,9 @@ def test_interactive_html_embeds_the_columns_with_their_marks() -> None:
     assert order["table"] == "public.order"
 
 
-def test_interactive_html_embeds_the_columns_each_line_joins() -> None:
+def test_interactive_html_embeds_the_columns_each_line_joins(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     edge = edges_of(make_model().diagram().to_interactive_html())[0]
 
     assert edge["source_columns"] == ["id"]
@@ -199,7 +243,9 @@ def test_interactive_html_embeds_the_columns_each_line_joins() -> None:
     assert edge["both"] is True
 
 
-def test_interactive_html_embeds_what_the_card_over_a_line_says() -> None:
+def test_interactive_html_embeds_what_the_card_over_a_line_says(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     edge = edges_of(make_model().diagram().to_interactive_html())[0]
 
     assert edge["source_name"] == "Customer"
@@ -213,14 +259,18 @@ def css_rule(html: str, selector: str) -> str:
     return found.group(1)
 
 
-def test_canvas_drags_the_card_by_its_head_only() -> None:
+def test_canvas_drags_the_card_by_its_head_only(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
 
     assert "ea-list nowheel nodrag" in html
     assert "cursor:grab" in css_rule(html, ".ea-head")
 
 
-def test_canvas_marks_the_column_under_the_pointer() -> None:
+def test_canvas_marks_the_column_under_the_pointer(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
 
     assert "height:24px" in css_rule(html, ".ea-row")
@@ -228,7 +278,9 @@ def test_canvas_marks_the_column_under_the_pointer() -> None:
     assert "var(--ea-surface-hover)" in css_rule(html, ".ea-row:hover")
 
 
-def test_canvas_shows_what_a_line_joins_over_the_line() -> None:
+def test_canvas_shows_what_a_line_joins_over_the_line(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
 
     assert "position:absolute" in css_rule(html, ".ea-pop")
@@ -236,14 +288,18 @@ def test_canvas_shows_what_a_line_joins_over_the_line() -> None:
     assert "priority" in html
 
 
-def test_canvas_stacks_the_entity_name_over_the_source_name() -> None:
+def test_canvas_stacks_the_entity_name_over_the_source_name(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
 
     assert "flex-direction:column" in css_rule(html, ".ea-head")
     assert "margin-left:auto" not in css_rule(html, ".ea-table")
 
 
-def test_canvas_keeps_the_scrollbar_out_of_sight_until_it_scrolls() -> None:
+def test_canvas_keeps_the_scrollbar_out_of_sight_until_it_scrolls(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
 
     assert "scrollbar-color:transparent" in css_rule(html, ".ea-list")
@@ -251,7 +307,11 @@ def test_canvas_keeps_the_scrollbar_out_of_sight_until_it_scrolls() -> None:
     assert "var(--ea-edge)" in css_rule(html, ".ea-list--scrolling")
 
 
-def test_interactive_html_routes_a_join_that_spans_a_row_of_its_own() -> None:
+def test_interactive_html_routes_a_join_that_spans_a_row_of_its_own(
+    make_entity: Callable[..., SemanticEntity],
+    model_of: Callable[..., SemanticModel],
+    relationship: Callable[..., SemanticRelationship],
+) -> None:
     """A join that skips a row is drawn below its box, not across that row."""
     region = make_entity("Region", [("code", String())])
     agent = make_entity("Agent", [("id", Integer()), ("region_code", String())])
@@ -279,7 +339,9 @@ def test_interactive_html_routes_a_join_that_spans_a_row_of_its_own() -> None:
     assert edges["region_agents"]["step"] == 0.5
 
 
-def test_interactive_html_lays_out_from_the_places_it_was_given() -> None:
+def test_interactive_html_lays_out_from_the_places_it_was_given(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     """One layout, not two: the canvas reads the places rather than repeating them."""
     html = make_model().diagram().to_interactive_html()
 
@@ -287,14 +349,18 @@ def test_interactive_html_lays_out_from_the_places_it_was_given() -> None:
     assert "function depthsOf" not in html
 
 
-def test_interactive_html_places_the_boxes_where_the_layout_puts_them() -> None:
+def test_interactive_html_places_the_boxes_where_the_layout_puts_them(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html()
     placed = {node["name"]: node for node in nodes_of(html)}
 
     assert placed["Customer"]["y"] < placed["Order"]["y"]
 
 
-def test_interactive_html_follows_the_direction_it_is_asked_for() -> None:
+def test_interactive_html_follows_the_direction_it_is_asked_for(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     diagram = make_model().diagram()
     vertical = {node["name"]: node for node in nodes_of(diagram.to_interactive_html())}
     across = {
@@ -306,13 +372,18 @@ def test_interactive_html_follows_the_direction_it_is_asked_for() -> None:
     assert across["Customer"]["x"] < across["Order"]["x"]
 
 
-def test_interactive_html_draws_the_title_when_asked_for_one() -> None:
+def test_interactive_html_draws_the_title_when_asked_for_one(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     html = make_model().diagram().to_interactive_html(title="Sales")
 
     assert data_of(html)["title"] == "Sales"
 
 
-def test_interactive_html_escapes_a_name_that_would_close_the_script() -> None:
+def test_interactive_html_escapes_a_name_that_would_close_the_script(
+    make_entity: Callable[..., SemanticEntity],
+    model_of: Callable[..., SemanticModel],
+) -> None:
     entity = make_entity("</script><img src=x onerror=alert(1)>", [("id", Integer())])
 
     html = model_of({entity.alias: entity}).diagram().to_interactive_html()
@@ -327,7 +398,9 @@ def test_interactive_html_of_an_empty_model_still_draws_something() -> None:
     assert "No entity to draw" in html
 
 
-def test_render_is_interactive_by_default() -> None:
+def test_render_is_interactive_by_default(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     pytest.importorskip("IPython.display")
     rendered = make_model().diagram().render()
     shown = getattr(rendered, "data", "")
@@ -336,7 +409,9 @@ def test_render_is_interactive_by_default() -> None:
     assert "srcdoc=" in shown
 
 
-def test_render_can_still_draw_the_static_picture() -> None:
+def test_render_can_still_draw_the_static_picture(
+    make_model: Callable[[], SemanticModel],
+) -> None:
     pytest.importorskip("IPython.display")
     diagram = make_model().diagram()
 
@@ -347,6 +422,7 @@ def test_render_can_still_draw_the_static_picture() -> None:
 
 def test_render_returns_the_document_when_ipython_is_missing(
     monkeypatch: pytest.MonkeyPatch,
+    make_model: Callable[[], SemanticModel],
 ) -> None:
     monkeypatch.setitem(sys.modules, "IPython.display", None)
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from uuid import UUID, uuid5
 
 import pytest
@@ -25,11 +26,6 @@ from etlalchemy.semantic.filter_parser import parse_filter
 from sqlglot import exp
 
 NAMESPACE = UUID("00000000-0000-0000-0000-000000000000")
-
-
-def _squash(sql: str) -> str:
-    """Collapse whitespace so assertions survive formatting."""
-    return " ".join(sql.split())
 
 
 def _entity(alias: str, *fields: str) -> SemanticEntity:
@@ -189,7 +185,9 @@ def test_in_list_binds_every_literal() -> None:
     assert dict(context.parameters) == {"param0": "paid", "param1": "shipped"}
 
 
-def test_complex_filter_compiles_into_the_where_clause() -> None:
+def test_complex_filter_compiles_into_the_where_clause(
+    squash: Callable[[str], str],
+) -> None:
     """Nested filters reach the compiled WHERE clause intact."""
     model = _model()
     query = (
@@ -203,7 +201,7 @@ def test_complex_filter_compiles_into_the_where_clause() -> None:
         )
     )
 
-    sql = _squash(query.compile(pretty=False).sql)
+    sql = squash(query.compile(pretty=False).sql)
 
     assert "(orders.status = 'paid' OR orders.status = 'shipped')" in sql
     assert "orders.amount BETWEEN 100 AND 500" in sql

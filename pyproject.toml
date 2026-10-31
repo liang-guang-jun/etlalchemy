@@ -66,6 +66,10 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 show_error_codes = true
 pretty = true
+# The test tree is not a package, so every conftest.py maps to the same module
+# name. Keep the root one out of the build so mypy has a single conftest module
+# to check; pytest still loads it, and the root module holds only fixtures.
+exclude = ["^tests/conftest\\.py$"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
@@ -88,5 +92,5 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-pythonpath = ["."]
+pythonpath = [".", "tests"]
 addopts = "-ra -q"

@@ -1,9 +1,11 @@
-"""Model fixtures shared by the diagram tests."""
+"""Fixtures that build the models the diagram tests draw."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from uuid import UUID, uuid5
 
+import pytest
 from etlalchemy.semantic import (
     Cardinality,
     DataType,
@@ -27,12 +29,12 @@ NAMESPACE = UUID("00000000-0000-0000-0000-000000000000")
 Column = tuple[str, DataType]
 
 
-def make_entity(name: str, columns: list[Column]) -> SemanticEntity:
+def _make_entity(name: str, columns: list[Column]) -> SemanticEntity:
     """Build a table-backed entity displayed as ``name``."""
     return _entity(name, columns, Materialization.TABLE)
 
 
-def query_entity(name: str, columns: list[Column]) -> SemanticEntity:
+def _query_entity(name: str, columns: list[Column]) -> SemanticEntity:
     """Build an entity backed by a query rather than by a table."""
     return _entity(name, columns, Materialization.QUERY)
 
@@ -59,7 +61,7 @@ def _entity(
     )
 
 
-def relationship(
+def _relationship(
     name: str,
     source: SemanticEntity,
     source_column: str,
@@ -81,13 +83,13 @@ def relationship(
     )
 
 
-def make_model() -> SemanticModel:
+def _make_model() -> SemanticModel:
     """Build the three-entity sales model the diagram tests draw."""
-    customer = make_entity(
+    customer = _make_entity(
         "Customer",
         [("id", Integer()), ("name", String())],
     )
-    order = make_entity(
+    order = _make_entity(
         "Order",
         [
             ("id", Integer()),
@@ -95,7 +97,7 @@ def make_model() -> SemanticModel:
             ("total", Decimal(10, 2)),
         ],
     )
-    payment = make_entity(
+    payment = _make_entity(
         "Payment",
         [("id", Integer()), ("order_id", Integer())],
     )
@@ -108,8 +110,8 @@ def make_model() -> SemanticModel:
                 "Payment": payment,
             },
             relationships=[
-                relationship("customer_orders", customer, "id", order, "customer_id"),
-                relationship(
+                _relationship("customer_orders", customer, "id", order, "customer_id"),
+                _relationship(
                     "order_payments",
                     order,
                     "id",
@@ -122,7 +124,7 @@ def make_model() -> SemanticModel:
     )
 
 
-def model_of(
+def _model_of(
     entities: dict[str, SemanticEntity],
     relationships: list[SemanticRelationship] | None = None,
 ) -> SemanticModel:
@@ -136,6 +138,42 @@ def model_of(
     )
 
 
-def entity_id(model: SemanticModel, name: str) -> str:
+def _entity_id(model: SemanticModel, name: str) -> str:
     """Return the diagram id of the entity registered under ``name``."""
     return str(model.registry.entities[name].id)
+
+
+@pytest.fixture
+def make_entity() -> Callable[[str, list[Column]], SemanticEntity]:
+    """Return a factory that builds a table-backed entity."""
+    return _make_entity
+
+
+@pytest.fixture
+def query_entity() -> Callable[[str, list[Column]], SemanticEntity]:
+    """Return a factory that builds a query-backed entity."""
+    return _query_entity
+
+
+@pytest.fixture
+def relationship() -> Callable[..., SemanticRelationship]:
+    """Return a factory that builds a single-column relationship."""
+    return _relationship
+
+
+@pytest.fixture
+def make_model() -> Callable[[], SemanticModel]:
+    """Return a factory that builds the three-entity sales model."""
+    return _make_model
+
+
+@pytest.fixture
+def model_of() -> Callable[..., SemanticModel]:
+    """Return a factory that builds a model from entities and relationships."""
+    return _model_of
+
+
+@pytest.fixture
+def entity_id() -> Callable[[SemanticModel, str], str]:
+    """Return a helper that resolves an entity name to its diagram id."""
+    return _entity_id
