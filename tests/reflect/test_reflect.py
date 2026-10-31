@@ -8,7 +8,6 @@ import sqlalchemy as sa
 from etlalchemy.reflect import (
     ReflectedColumn,
     ReflectedTable,
-    ReflectSource,
     as_entities,
     map_type,
 )
@@ -48,14 +47,10 @@ def test_reflect_tables_reads_columns_and_primary_keys(tmp_path: Path) -> None:
 
 
 def test_reflect_tables_honours_a_table_selection(tmp_path: Path) -> None:
-    """Only the tables named by the source are reflected."""
-    base = sqlite_source(tmp_path)
-    source = ReflectSource(
-        connection_url=base.connection_url,
-        table_names=("users",),
-    )
+    """Only the tables named by the call are reflected."""
+    source = sqlite_source(tmp_path)
 
-    tables = reflected_tables(source)
+    tables = reflected_tables(source, table_names=("users",))
 
     assert [table.name for table in tables] == ["users"]
 

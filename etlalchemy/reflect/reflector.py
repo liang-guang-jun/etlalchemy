@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from etlalchemy.reflect.inspector import ReflectionSession
-from etlalchemy.reflect.repositories import ReflectionRepository
+from etlalchemy.reflect.repositories import (
+    InMemoryReflectionRepository,
+    ReflectionRepository,
+)
 from etlalchemy.reflect.source import ReflectSource
 from etlalchemy.reflect.table import ReflectedTable
 
@@ -25,8 +28,9 @@ class Reflector:
     The reflector holds the source and the repository, so several calls share
     one cache. It never connects to the database when it is built: every call
     opens a :class:`~etlalchemy.reflect.inspector.ReflectionSession`, which
-    reflects only what the call needs. The reflector never builds a default
-    cache; a repository is required.
+    reflects only what the call needs. The default cache is an in-memory
+    repository, which suits a notebook session; pass a file or a SQL repository
+    to persist the cache.
     """
 
     def __init__(
@@ -36,19 +40,15 @@ class Reflector:
     ) -> None:
         """Keep ``source`` and the caller-provided ``repository``.
 
-        Raises:
-            ValueError: If ``repository`` is not given. The reflector never
-                builds a default cache: where a cache is written is the
-                caller's decision.
+        When ``repository`` is ``None``, an
+        :class:`~etlalchemy.reflect.repositories.InMemoryReflectionRepository`
+        is created, so a call without a cache still works and shares the cache
+        across the calls made on the same reflector.
         """
-        if repository is None:
-            raise ValueError(
-                "Reflector requires an explicit repository; pass "
-                "InMemoryReflectionRepository(), JsonReflectionRepository(directory), "
-                "or another ReflectionRepository"
-            )
         self._source = source
-        self._repository = repository
+        self._repository = (
+            InMemoryReflectionRepository() if repository is None else repository
+        )
 
     @property
     def source(self) -> ReflectSource:
@@ -97,8 +97,7 @@ class Reflector:
     ) -> tuple[ReflectedTable, ...]:
         """Reflect the given tables, sorted by name.
 
-        An empty ``names`` falls back to the selection of the source, and then
-        to every table of the schema.
+        An empty ``names`` reflects every table of the schema.
 
         Args:
             names: Tables to reflect.
@@ -156,8 +155,8 @@ class Reflector:
         Args:
             catalog: Optional catalog passed to the inspector.
             schema: Optional schema passed to the inspector.
-            table_names: Tables the session may reflect; the selection of the
-                source when empty.
+            table_names: Tables the session may reflect; empty means every
+                table of the schema.
             force: Clear the cached entry when the session starts.
 
         Returns:
@@ -168,7 +167,7 @@ class Reflector:
             repository=self._repository,
             catalog=catalog,
             schema=schema,
-            table_names=table_names or self._source.table_names,
+            table_names=table_names,
             force=force,
         )
 

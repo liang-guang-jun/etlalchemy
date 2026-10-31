@@ -15,13 +15,11 @@ class ReflectSource:
     order: the Databricks notebook runtime, the ``DATABRICKS_*`` environment
     variables, then the ``DEFAULT`` profile of ``~/.databrickscfg``.
 
-    ``table_names`` selects a subset of the tables in ``schema``; an empty
-    tuple reflects every table of the schema.
+    A source describes how to connect only; which catalog, schema and tables to
+    reflect is passed to the reflector or the reflection call.
     """
 
     connection_url: str | None = None
-    schema: str | None = None
-    table_names: tuple[str, ...] = ()
     profile: str | None = None
     auto_detect: bool = True
 

@@ -11,8 +11,11 @@ client-credentials environment variables.
 
 from __future__ import annotations
 
+import builtins
 import os
+import sys
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +28,15 @@ DETECTION_MESSAGE = (
 
 #: Port the SQLAlchemy Databricks dialect connects to.
 _PORT = 443
+
+
+@dataclass(frozen=True)
+class _NotebookConnection:
+    """Credentials and SQL endpoint resolved from a Databricks notebook."""
+
+    host: str
+    access_token: str
+    http_path: str | None
 
 
 def databricks_connection(
@@ -59,7 +71,15 @@ def databricks_connection(
 
 
 def _detect_connection() -> str | None:
-    """Return the auto-detected connection URL, or None."""
+    """Return the auto-detected connection URL, or None.
+
+    A Databricks notebook is asked first, because a cluster injects ``dbutils``
+    and Spark regardless of whether the ``DATABRICKS_*`` variables are set.
+    """
+    notebook = _detect_notebook_context()
+    if notebook is not None:
+        return _token_url(notebook.host, notebook.access_token, notebook.http_path)
+
     runtime_version = os.environ.get("DATABRICKS_RUNTIME_VERSION")
     if runtime_version:
         host = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
@@ -80,6 +100,76 @@ def _detect_connection() -> str | None:
     if _default_config_path().is_file() and has_default_profile():
         return _default_profile_url()
     return None
+
+
+def _runtime_global(name: str) -> object | None:
+    """Read an injected notebook global without importing notebook modules."""
+    value: object | None = getattr(builtins, name, None)
+    if value is not None:
+        return value
+    main_module = sys.modules.get("__main__")
+    if main_module is None:
+        return None
+    from_main: object | None = getattr(main_module, name, None)
+    return from_main
+
+
+def _spark_conf(spark: object | None, key: str) -> str | None:
+    """Read one Spark configuration key when Spark is available."""
+    if spark is None:
+        return None
+    conf = getattr(spark, "conf", None)
+    getter = getattr(conf, "get", None)
+    if not callable(getter):
+        return None
+    try:
+        value = getter(key, None)
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return value if isinstance(value, str) and value else None
+
+
+def _cluster_http_path(spark: object | None) -> str | None:
+    """Build the classic cluster SQL endpoint when the warehouse path is absent."""
+    cluster_id = _spark_conf(spark, "spark.databricks.clusterUsageTags.clusterId")
+    organization_id = _spark_conf(
+        spark,
+        "spark.databricks.clusterUsageTags.clusterOwnerOrgId",
+    )
+    if cluster_id is None or organization_id is None:
+        return None
+    return f"/sql/protocolv1/o/{organization_id}/{cluster_id}"
+
+
+def _detect_notebook_context() -> _NotebookConnection | None:
+    """Return the notebook connection data, or None outside a notebook.
+
+    ``dbutils.notebook.entry_point`` exposes the workspace host and a token,
+    which is the only credential source on shared and serverless clusters.
+    """
+    dbutils = _runtime_global("dbutils")
+    spark = _runtime_global("spark")
+    if dbutils is None:
+        return None
+    try:
+        notebook = getattr(dbutils, "notebook")
+        entry_point = getattr(notebook, "entry_point")
+        context = entry_point.getDbutils().notebook().getContext()
+        host = context.browserHostName().get()
+        access_token = context.apiToken().get()
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if not isinstance(host, str) or not host:
+        return None
+    if not isinstance(access_token, str) or not access_token:
+        return None
+    http_path = _spark_conf(spark, "spark.databricks.service.server.httpPath")
+    http_path = http_path or _cluster_http_path(spark)
+    return _NotebookConnection(
+        host=host,
+        access_token=access_token,
+        http_path=http_path,
+    )
 
 
 def _profile_credentials(profile: str) -> tuple[str, str, str]:

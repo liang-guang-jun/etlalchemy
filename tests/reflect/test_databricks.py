@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import builtins
 from pathlib import Path
+from types import SimpleNamespace
 
 import etlalchemy.reflect.databricks as databricks
 import pytest
@@ -29,6 +31,8 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         "_default_config_path",
         lambda: tmp_path / "missing-databrickscfg",
     )
+    monkeypatch.delattr(builtins, "dbutils", raising=False)
+    monkeypatch.delattr(builtins, "spark", raising=False)
 
 
 def test_connection_url_is_returned_unchanged() -> None:
@@ -192,3 +196,125 @@ def test_profile_without_any_credentials_raises(
 
     with pytest.raises(ValueError, match=databricks.DETECTION_MESSAGE):
         databricks.databricks_connection(ReflectSource(profile="DEFAULT"))
+
+
+def _fake_dbutils(host: str, token: str) -> object:
+    """Build the ``dbutils`` chain a Databricks notebook exposes."""
+    context = SimpleNamespace(
+        browserHostName=lambda: SimpleNamespace(get=lambda: host),
+        apiToken=lambda: SimpleNamespace(get=lambda: token),
+    )
+    return SimpleNamespace(
+        notebook=SimpleNamespace(
+            entry_point=SimpleNamespace(
+                getDbutils=lambda: SimpleNamespace(
+                    notebook=lambda: SimpleNamespace(getContext=lambda: context)
+                )
+            )
+        )
+    )
+
+
+def _fake_spark(conf: dict[str, str]) -> object:
+    """Build a ``spark`` object that answers ``conf.get`` from a dict."""
+    return SimpleNamespace(conf=SimpleNamespace(get=conf.get))
+
+
+def test_notebook_context_is_detected_with_the_warehouse_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The notebook runtime supplies host, token and the SQL warehouse path."""
+    monkeypatch.setattr(
+        builtins,
+        "dbutils",
+        _fake_dbutils("adb-123.azuredatabricks.net", "dapi-from-notebook"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        builtins,
+        "spark",
+        _fake_spark(
+            {"spark.databricks.service.server.httpPath": "/sql/1.0/warehouses/abc"}
+        ),
+        raising=False,
+    )
+
+    url, _ = databricks.databricks_connection(ReflectSource())
+
+    assert url == (
+        "databricks://token:dapi-from-notebook@adb-123.azuredatabricks.net:443"
+        "?http_path=/sql/1.0/warehouses/abc"
+    )
+
+
+def test_notebook_context_falls_back_to_the_cluster_sql_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An all-purpose cluster without a warehouse path uses its own endpoint."""
+    monkeypatch.setattr(
+        builtins,
+        "dbutils",
+        _fake_dbutils("adb-123.azuredatabricks.net", "dapi-from-notebook"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        builtins,
+        "spark",
+        _fake_spark(
+            {
+                "spark.databricks.clusterUsageTags.clusterId": "0815-120000-abc",
+                "spark.databricks.clusterUsageTags.clusterOwnerOrgId": "1234",
+            }
+        ),
+        raising=False,
+    )
+
+    url, _ = databricks.databricks_connection(ReflectSource())
+
+    assert url == (
+        "databricks://token:dapi-from-notebook@adb-123.azuredatabricks.net:443"
+        "?http_path=/sql/protocolv1/o/1234/0815-120000-abc"
+    )
+
+
+def test_notebook_context_without_spark_has_no_http_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without Spark the URL carries the token but no warehouse path."""
+    monkeypatch.setattr(
+        builtins,
+        "dbutils",
+        _fake_dbutils("adb-123.azuredatabricks.net", "dapi-from-notebook"),
+        raising=False,
+    )
+
+    url, _ = databricks.databricks_connection(ReflectSource())
+
+    assert url == "databricks://token:dapi-from-notebook@adb-123.azuredatabricks.net:443"
+
+
+def test_detection_falls_through_without_dbutils(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Outside a notebook the environment variables are still detected."""
+    monkeypatch.setenv("DATABRICKS_SERVER_HOSTNAME", "adb-123.azuredatabricks.net")
+    monkeypatch.setenv("DATABRICKS_TOKEN", "dapi-secret")
+
+    url, _ = databricks.databricks_connection(ReflectSource())
+
+    assert url == "databricks://token:dapi-secret@adb-123.azuredatabricks.net:443"
+
+
+def test_a_broken_notebook_context_does_not_break_detection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dbutils object without a notebook entry point is ignored."""
+    monkeypatch.setattr(builtins, "dbutils", SimpleNamespace(), raising=False)
+
+    with pytest.raises(ValueError, match=databricks.DETECTION_MESSAGE):
+        databricks.databricks_connection(ReflectSource())
+
+
+def test_notebook_detection_is_none_without_the_runtime() -> None:
+    """Outside a notebook the helper reports no context at all."""
+    assert databricks._detect_notebook_context() is None

@@ -93,10 +93,11 @@ def test_reflector_reflects_named_tables(tmp_path: Path) -> None:
     assert reflector.repository is repository
 
 
-def test_reflector_requires_repository() -> None:
-    """A reflector without a repository is a usage error."""
-    with pytest.raises(ValueError, match="repository"):
-        Reflector(ReflectSource(connection_url="sqlite://"))
+def test_reflector_defaults_to_an_in_memory_repository() -> None:
+    """A reflector without a repository keeps its cache in memory."""
+    reflector = Reflector(ReflectSource(connection_url="sqlite://"))
+
+    assert isinstance(reflector.repository, InMemoryReflectionRepository)
 
 
 def test_reflector_uses_given_repository() -> None:

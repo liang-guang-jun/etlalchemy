@@ -55,12 +55,11 @@ def test_reflector_tables_sorts_and_deduplicates_selection(
     assert SessionSpy.instances[0].table_names == ("a", "b")
 
 
-def test_tables_of_an_empty_selection_falls_back_to_the_source(
+def test_tables_of_an_empty_selection_reflects_the_whole_schema(
     tmp_path: Path,
 ) -> None:
-    """``tables(())`` reflects the selection of the source, as documented."""
-    base = sqlite_source(tmp_path)
-    source = ReflectSource(connection_url=base.connection_url, table_names=("users",))
+    """``tables(())`` reflects every table of the schema."""
+    source = sqlite_source(tmp_path)
     reflector = Reflector(source, InMemoryReflectionRepository())
 
-    assert [table.name for table in reflector.tables(())] == ["users"]
+    assert [table.name for table in reflector.tables(())] == ["orders", "users"]

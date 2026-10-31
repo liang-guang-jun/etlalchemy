@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from etlalchemy.reflect import (
     InMemoryReflectionRepository,
     Reflector,
@@ -38,10 +37,13 @@ def test_reflect_tables_accepts_a_ready_made_reflector(tmp_path: Path) -> None:
     assert len(repository) == 1
 
 
-def test_reflect_tables_requires_repository_when_no_reflector() -> None:
-    """The one-shot helper needs a repository when it builds the reflector."""
-    with pytest.raises(ValueError, match="repository"):
-        reflect_tables(ReflectSource(connection_url="sqlite://"))
+def test_reflect_tables_defaults_to_an_in_memory_repository(
+    tmp_path: Path,
+) -> None:
+    """The one-shot helper needs no repository at all."""
+    tables = reflect_tables(sqlite_source(tmp_path))
+
+    assert [table.name for table in tables] == ["orders", "users"]
 
 
 def test_reflect_tables_accepts_explicit_repository(tmp_path: Path) -> None:

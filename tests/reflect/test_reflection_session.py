@@ -11,7 +11,6 @@ from etlalchemy.reflect import (
     JsonReflectionRepository,
     ReflectionSession,
     Reflector,
-    ReflectSource,
 )
 from etlalchemy.semantic.types import String
 
@@ -38,14 +37,10 @@ def test_session_saves_what_it_reflected(tmp_path: Path) -> None:
 
 def test_session_rejects_a_table_outside_the_selection(tmp_path: Path) -> None:
     """A session only reflects the tables it selects."""
-    base = sqlite_source(tmp_path)
-    source = ReflectSource(
-        connection_url=base.connection_url,
-        table_names=("users",),
-    )
+    source = sqlite_source(tmp_path)
     repository = InMemoryReflectionRepository()
 
-    with Reflector(source, repository).session() as session:
+    with Reflector(source, repository).session(table_names=("users",)) as session:
         session.table("users")
         with pytest.raises(ValueError, match="not part of the reflected selection"):
             session.table("orders")

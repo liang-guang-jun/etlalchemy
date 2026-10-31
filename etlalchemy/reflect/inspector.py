@@ -314,32 +314,19 @@ def reflect_tables(
         source: Database to reflect.
         catalog: Optional catalog passed to the inspector.
         schema: Optional schema passed to the inspector.
-        table_names: Tables to reflect; an empty tuple uses
-            ``source.table_names``, and reflects every table of the schema when
-            the source selects none as well.
+        table_names: Tables to reflect; an empty tuple reflects every table of
+            the schema.
         force: Clear the cached entry before reflecting.
-        repository: Cache to use; required when ``reflector`` is ``None``.
+        repository: Cache to use; the default in-memory cache when ``None``.
         reflector: Ready-made reflector; one is built from ``repository`` when
             ``None``.
 
     Returns:
         The reflected tables, sorted by name.
-
-    Raises:
-        ValueError: If neither ``reflector`` nor ``repository`` is given.
     """
     from etlalchemy.reflect.reflector import Reflector
 
-    if reflector is not None:
-        active = reflector
-    elif repository is not None:
-        active = Reflector(source, repository)
-    else:
-        raise ValueError(
-            "reflect_tables requires a repository when no reflector is given; "
-            "pass InMemoryReflectionRepository(), JsonReflectionRepository(directory), "
-            "or another ReflectionRepository"
-        )
+    active = reflector or Reflector(source, repository)
     if table_names:
         return active.tables(
             table_names,
