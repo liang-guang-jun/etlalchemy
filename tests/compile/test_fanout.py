@@ -8,6 +8,7 @@ import pytest
 from etlalchemy.compile.compiler import compile_query
 from etlalchemy.compile.context import CompileContext
 from etlalchemy.compile.plan import FanoutRisk, detect_fanout
+from etlalchemy.compile.report import FANOUT_RISK
 from etlalchemy.compile.resolve import resolve_query
 from etlalchemy.compile.routes import select_edges
 from etlalchemy.semantic import (
@@ -213,6 +214,13 @@ def test_compile_reports_warning_level_fanout_risks(
     assert compiled.params == []
     assert [risk.measure for risk in compiled.report.fanout_risks] == ["team_total"]
     assert compiled.report.fanout_risks[0].severity == "warning"
+    events = compiled.report.with_code(FANOUT_RISK)
+    assert [(event.measure, event.relationship) for event in events] == [
+        ("team_total", "teams_members")
+    ]
+    assert events[0].severity == "warning"
+    assert events[0].phase == "fanout"
+    assert isinstance(events[0].payload, FanoutRisk)
     # teams holds the measure, so it is the base and the one end joins with LEFT.
     assert compiled.report.join_types == (("teams_members", "LEFT"),)
 

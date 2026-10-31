@@ -3,16 +3,26 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 
 from etlalchemy.compile.builder import build_merge, build_select
 from etlalchemy.compile.context import CompileContext
 from etlalchemy.compile.plan import (
     FanoutRisk,
+    JoinStep,
     detect_fanout,
     group_measures_by_entity,
     plan_ctes,
     plan_joins,
     plan_merge,
+)
+from etlalchemy.compile.report import (
+    EXPRESSION_JOIN_UNBOUND,
+    FANOUT_REJECTED,
+    FANOUT_RISK,
+    UNREACHABLE_DIMENSION,
+    CompileEvent,
+    JoinDecision,
 )
 from etlalchemy.compile.resolve import resolve_query
 from etlalchemy.compile.result import CompiledQuery
@@ -20,7 +30,11 @@ from etlalchemy.compile.routes import select_edges
 from etlalchemy.semantic.expression import Query
 from etlalchemy.semantic.join import ExpressionJoin
 from etlalchemy.semantic.model import SemanticModel
-from etlalchemy.semantic.relationship import SemanticRelationship
+from etlalchemy.semantic.relationship import (
+    Cardinality,
+    FilterDirection,
+    SemanticRelationship,
+)
 
 #: Logger used for diagnostics that do not fit in the returned values.
 logger = logging.getLogger(__name__)
@@ -45,9 +59,17 @@ def _warn_expression_joins(
         return
     for relationship in edges:
         if isinstance(relationship.condition, ExpressionJoin):
-            context.report.add_warning(
-                "expression join does not bind literals; ensure the expression "
-                f"is safe in relationship {relationship.name!r}"
+            context.report.add(
+                CompileEvent(
+                    code=EXPRESSION_JOIN_UNBOUND,
+                    severity="warning",
+                    message=(
+                        "expression join does not bind literals; ensure the "
+                        f"expression is safe in relationship {relationship.name!r}"
+                    ),
+                    phase="routes",
+                    relationship=relationship.name,
+                )
             )
 
 
@@ -65,10 +87,25 @@ def _fanout_error_message(risks: tuple[FanoutRisk, ...]) -> str:
 
 
 def _report_fanout(risks: tuple[FanoutRisk, ...], context: CompileContext) -> None:
-    """Keep the warning-level fanout risks and log them."""
-    warnings = tuple(risk for risk in risks if risk.severity == "warning")
-    context.report.fanout_risks = warnings
-    for risk in warnings:
+    """Record the warning-level fanout risks as events and log them."""
+    for risk in risks:
+        if risk.severity != "warning":
+            continue
+        context.report.add(
+            CompileEvent(
+                code=FANOUT_RISK,
+                severity="warning",
+                message=(
+                    f"Fanout risk for measure {risk.measure!r} on relationship "
+                    f"{risk.relationship!r}: {risk.reason}; the aggregation is "
+                    "stable under duplicated rows"
+                ),
+                phase="fanout",
+                measure=risk.measure,
+                relationship=risk.relationship,
+                payload=risk,
+            )
+        )
         logger.warning(
             "Fanout risk for measure %r on relationship %r: %s; the "
             "aggregation is stable under duplicated rows",
@@ -76,6 +113,30 @@ def _report_fanout(risks: tuple[FanoutRisk, ...], context: CompileContext) -> No
             risk.relationship,
             risk.reason,
         )
+
+
+def _join_reason(relationship: SemanticRelationship) -> str:
+    """Return the planner's reason for the join type of a relationship."""
+    if relationship.filter_direction is FilterDirection.BOTH:
+        return "both_filter"
+    if relationship.cardinality is Cardinality.MANY_TO_MANY:
+        return "many_to_many"
+    if relationship.cardinality is Cardinality.ONE_TO_MANY:
+        return "one_to_many_single"
+    return "one_to_one"
+
+
+def _join_decisions(steps: Iterable[JoinStep]) -> tuple[JoinDecision, ...]:
+    """Turn planned join steps into the decisions carried by the report."""
+    return tuple(
+        JoinDecision(
+            relationship=step.relationship.name,
+            join_type=step.join_type,
+            reason=_join_reason(step.relationship),
+            reversed=step.reversed_edge,
+        )
+        for step in steps
+    )
 
 
 def compile_query(
@@ -158,6 +219,21 @@ def compile_query(
     risks = detect_fanout(resolved, edges, model.registry)
     errors = tuple(risk for risk in risks if risk.severity == "error")
     if errors:
+        for risk in errors:
+            context.report.add(
+                CompileEvent(
+                    code=FANOUT_REJECTED,
+                    severity="error",
+                    message=(
+                        f"Fanout detected for measure {risk.measure!r} on "
+                        f"relationship {risk.relationship!r}: {risk.reason}."
+                    ),
+                    phase="fanout",
+                    measure=risk.measure,
+                    relationship=risk.relationship,
+                    payload=risk,
+                )
+            )
         raise ValueError(_fanout_error_message(errors))
     _report_fanout(risks, context)
 
@@ -167,23 +243,28 @@ def compile_query(
             resolved, grouped, edges, model.registry, unreachable_dimensions
         )
         context.report.cte_count = len(ctes)
-        context.report.join_types = tuple(
-            (step.relationship.name, step.join_type)
-            for cte in ctes
-            for step in cte.steps
+        context.report.join_decisions = _join_decisions(
+            step for cte in ctes for step in cte.steps
         )
         for cte in ctes:
             for dimension in cte.null_dimensions:
-                context.report.add_unreachable_dimension(
-                    f"Dimension {dimension.output_alias!r} is NULL for entity "
-                    f"{cte.entity_alias!r}"
+                context.report.add(
+                    CompileEvent(
+                        code=UNREACHABLE_DIMENSION,
+                        severity="warning",
+                        message=(
+                            f"Dimension {dimension.output_alias!r} is NULL for "
+                            f"entity {cte.entity_alias!r}"
+                        ),
+                        phase="plan",
+                        entity=cte.entity_alias,
+                        dimension=dimension.output_alias,
+                    )
                 )
         statement = build_merge(plan_merge(resolved, ctes), context)
     else:
         plan = plan_joins(resolved, edges, context)
-        context.report.join_types = tuple(
-            (step.relationship.name, step.join_type) for step in plan.steps
-        )
+        context.report.join_decisions = _join_decisions(plan.steps)
         statement = build_select(plan, context)
 
     sql = statement.sql(dialect=dialect, pretty=pretty)

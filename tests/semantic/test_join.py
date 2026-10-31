@@ -8,6 +8,7 @@ import pytest
 import sqlglot
 from etlalchemy.compile.compiler import _warn_expression_joins
 from etlalchemy.compile.context import CompileContext
+from etlalchemy.compile.report import EXPRESSION_JOIN_UNBOUND
 from etlalchemy.compile.resolve import resolve_query
 from etlalchemy.compile.routes import select_edges
 from etlalchemy.semantic import (
@@ -318,8 +319,11 @@ def test_expression_join_warns_about_unbound_literals() -> None:
 
     _warn_expression_joins(select_edges(resolved, context), context)
 
-    warnings = context.report.warnings
-    assert any("does not bind literals" in warning for warning in warnings)
+    events = context.report.with_code(EXPRESSION_JOIN_UNBOUND)
+    assert [event.relationship for event in events] == ["orders_patterns"]
+    assert events[0].severity == "warning"
+    assert events[0].phase == "routes"
+    assert "does not bind literals" in events[0].message
 
 
 def test_expression_join_stays_silent_with_inline_literals() -> None:
@@ -331,7 +335,7 @@ def test_expression_join_stays_silent_with_inline_literals() -> None:
 
     _warn_expression_joins(select_edges(resolved, context), context)
 
-    assert context.report.warnings == []
+    assert context.report.with_code(EXPRESSION_JOIN_UNBOUND) == ()
 
 
 def test_equi_join_stays_silent_when_literals_are_parameterized(

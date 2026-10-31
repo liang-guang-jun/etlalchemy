@@ -62,6 +62,11 @@ import dataclasses
 from collections import deque
 
 from etlalchemy.compile.context import CompileContext
+from etlalchemy.compile.report import (
+    BOTH_FILTER_FORCES_INNER,
+    LEFT_JOIN_FILTERED,
+    CompileEvent,
+)
 from etlalchemy.compile.resolve import (
     ResolvedDimension,
     ResolvedMeasure,
@@ -593,11 +598,11 @@ def _build_steps(
 
     Each step records whether its filters may be pushed into the source side
     and whether a semi-join would be needed. Two target-side asymmetries are
-    reported: a ``BOTH`` edge with a target-side filter is joined with INNER
-    (the filter forces it), and a LEFT step whose target entity is filtered in
-    the WHERE clause keeps its LEFT type but behaves like an INNER JOIN,
-    because the filter drops the rows the LEFT JOIN kept with NULL target
-    columns.
+    reported as structured :class:`~etlalchemy.compile.report.CompileEvent`
+    events: a ``BOTH`` edge with a target-side filter is joined with INNER (the
+    filter forces it), and a LEFT step whose target entity is filtered in the
+    WHERE clause keeps its LEFT type but behaves like an INNER JOIN, because
+    the filter drops the rows the LEFT JOIN kept with NULL target columns.
     """
     needed = _needed_edges(base_alias, referenced, tree)
     filtered = _filter_aliases(resolved)
@@ -610,14 +615,33 @@ def _build_steps(
             relationship.filter_direction is FilterDirection.SINGLE and source_filtered
         )
         if relationship.filter_direction is FilterDirection.BOTH and target_filtered:
-            context.report.add_warning(
-                "filter_direction BOTH with a target-side filter on relationship "
-                f"{relationship.name!r} forces an INNER JOIN"
+            context.report.add(
+                CompileEvent(
+                    code=BOTH_FILTER_FORCES_INNER,
+                    severity="warning",
+                    message=(
+                        "filter_direction BOTH with a target-side filter on "
+                        f"relationship {relationship.name!r} forces an INNER JOIN"
+                    ),
+                    phase="plan",
+                    relationship=relationship.name,
+                    join_type="INNER",
+                )
             )
         if step.join_type == "LEFT" and step.target_alias in filtered:
-            context.report.add_warning(
-                f"LEFT JOIN on relationship {relationship.name!r} is filtered on "
-                "its target side; the result behaves like an INNER JOIN"
+            context.report.add(
+                CompileEvent(
+                    code=LEFT_JOIN_FILTERED,
+                    severity="warning",
+                    message=(
+                        f"LEFT JOIN on relationship {relationship.name!r} is "
+                        "filtered on its target side; the result behaves like an "
+                        "INNER JOIN"
+                    ),
+                    phase="plan",
+                    relationship=relationship.name,
+                    join_type="LEFT",
+                )
             )
         steps.append(dataclasses.replace(step, filter_pushed=filter_pushed))
     return tuple(steps)

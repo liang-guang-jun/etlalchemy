@@ -8,7 +8,16 @@ from uuid import UUID, uuid5
 
 import pytest
 import sqlglot
-from etlalchemy.compile import CompiledQuery, compile_query
+from etlalchemy.compile import (
+    BOTH_FILTER_FORCES_INNER,
+    LEFT_JOIN_FILTERED,
+    UNREACHABLE_DIMENSION,
+    CompiledQuery,
+    CompileEvent,
+    JoinDecision,
+    compile_query,
+)
+from etlalchemy.compile.compiler import _join_reason
 from etlalchemy.compile.context import CompileContext
 from etlalchemy.compile.plan import (
     choose_base_entity,
@@ -818,7 +827,12 @@ def test_both_direction_filter_on_target_forces_inner_join(
     step = plan.steps[0]
     assert step.join_type == "INNER"
     assert step.semi_join is False
-    assert any("BOTH" in warning for warning in context.report.warnings)
+    events = context.report.with_code(BOTH_FILTER_FORCES_INNER)
+    assert len(events) == 1
+    assert events[0].severity == "warning"
+    assert events[0].phase == "plan"
+    assert events[0].relationship == "orders_customers"
+    assert events[0].join_type == "INNER"
     assert "INNER JOIN crm.customers" in squash(query.compile().sql)
 
 
@@ -837,9 +851,56 @@ def test_left_join_filtered_on_target_warns_about_inner_semantics(
 
     # The plan keeps the LEFT JOIN and only reports the semantic downgrade.
     assert "LEFT JOIN crm.customers" in squash(compiled.sql)
-    assert any(
-        "behaves like an INNER JOIN" in warning for warning in compiled.report.warnings
+    events = compiled.report.with_code(LEFT_JOIN_FILTERED)
+    assert [event.relationship for event in events] == ["orders_customers_id"]
+    assert [event.join_type for event in events] == ["LEFT"]
+    assert events[0].severity == "warning"
+    assert events[0].phase == "plan"
+    assert "behaves like an INNER JOIN" in events[0].message
+
+
+def test_join_decisions_record_the_reason_for_each_join() -> None:
+    """The report explains why each join got its type."""
+    model = _linked_model(direction=FilterDirection.BOTH)
+    query = (
+        model.q.group_by("customers.region")
+        .calculate("revenue")
+        .filter("customers.region = 'APAC'")
     )
+
+    compiled = query.compile()
+
+    assert compiled.report.join_decisions == (
+        JoinDecision(
+            relationship="orders_customers",
+            join_type="INNER",
+            reason="both_filter",
+            reversed=False,
+        ),
+    )
+    assert compiled.report.join_types == (("orders_customers", "INNER"),)
+
+
+def test_join_reason_follows_cardinality_and_filter_direction() -> None:
+    """Each relationship shape maps to its own planner reason."""
+    orders = _entity("orders", "id", "customer_id")
+    customers = _entity("customers", "id", "region")
+    link = _relationship("orders_customers", orders, "customer_id", customers, "id")
+
+    def reason(cardinality: Cardinality, direction: FilterDirection) -> str:
+        shaped = dataclasses.replace(
+            link,
+            cardinality=cardinality,
+            filter_direction=direction,
+        )
+        return _join_reason(shaped)
+
+    assert reason(Cardinality.ONE_TO_MANY, FilterDirection.SINGLE) == (
+        "one_to_many_single"
+    )
+    assert reason(Cardinality.ONE_TO_MANY, FilterDirection.BOTH) == "both_filter"
+    assert reason(Cardinality.MANY_TO_MANY, FilterDirection.SINGLE) == "many_to_many"
+    assert reason(Cardinality.ONE_TO_ONE, FilterDirection.SINGLE) == "one_to_one"
 
 
 def test_route_pair_without_relationship_is_rejected() -> None:
@@ -958,9 +1019,18 @@ def test_unreachable_dimension_can_be_nulled_in_lenient_mode(
     )
     for cte in ctes:
         for dimension in cte.null_dimensions:
-            context.report.add_unreachable_dimension(
-                f"Dimension {dimension.output_alias!r} is NULL for entity "
-                f"{cte.entity_alias!r}"
+            context.report.add(
+                CompileEvent(
+                    code=UNREACHABLE_DIMENSION,
+                    severity="warning",
+                    message=(
+                        f"Dimension {dimension.output_alias!r} is NULL for entity "
+                        f"{cte.entity_alias!r}"
+                    ),
+                    phase="plan",
+                    entity=cte.entity_alias,
+                    dimension=dimension.output_alias,
+                )
             )
 
     sql = query.compile(dialect="databricks", unreachable_dimensions="null").sql
@@ -975,6 +1045,11 @@ def test_unreachable_dimension_can_be_nulled_in_lenient_mode(
         "is NULL for entity" in item
         for item in context.report.unreachable_dimension_warnings
     )
+    events = context.report.with_code(UNREACHABLE_DIMENSION)
+    assert [(event.entity, event.dimension) for event in events] == [
+        ("orders", "campaign"),
+        ("refunds", "campaign"),
+    ]
 
 
 def test_invalid_unreachable_dimensions_mode_is_rejected() -> None:

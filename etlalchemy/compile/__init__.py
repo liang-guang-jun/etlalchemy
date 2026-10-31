@@ -39,8 +39,8 @@ First-version boundaries:
   more than one entity, and together with ``count`` it is rejected when the
   query spans several fact entities, because the value cannot be merged across
   CTEs yet;
-* the return value always carries the ``CompileReport`` with the fanout
-  warnings and the join types of the plan;
+* the return value always carries the ``CompileReport`` with the structured
+  diagnostics of the plan;
 * filters are parsed from a SQL-like DSL into ``Comparison``, ``Logical``,
   ``Not``, ``In``, ``Between``, ``IsNull``, ``Like`` and ``FieldComparison``
   nodes; filters are pushed into the CTE that owns the referenced entities, an
@@ -57,9 +57,49 @@ First-version boundaries:
 * ORDER BY NULL placement follows ``nulls_first``: ``True`` renders
   ``NULLS FIRST``, ``False`` renders ``NULLS LAST`` and ``None`` renders no
   NULLS clause, leaving the placement to the target database.
+
+Compile report:
+
+``CompiledQuery.report`` is a
+:class:`~etlalchemy.compile.report.CompileReport` holding structured
+:class:`~etlalchemy.compile.report.CompileEvent` events and the
+:class:`~etlalchemy.compile.report.JoinDecision` entries of the plan. Every
+event carries a stable ``code`` (``EXPRESSION_JOIN_UNBOUND``,
+``LEFT_JOIN_FILTERED``, ``BOTH_FILTER_FORCES_INNER``, ``UNREACHABLE_DIMENSION``,
+``FANOUT_RISK`` or ``FANOUT_REJECTED``), a ``severity`` (``"info"``,
+``"warning"`` or ``"error"``) and the compile ``phase`` (``"resolve"``,
+``"routes"``, ``"fanout"``, ``"plan"`` or ``"build"``), plus the entity,
+relationship, dimension, measure and join type it refers to. Filter the report
+with ``report.with_code(...)`` or ``report.with_severity(...)``; the
+``warnings``, ``errors``, ``fanout_risks``, ``join_types`` and
+``unreachable_dimension_warnings`` properties are compatibility views derived
+from ``events`` and ``join_decisions``.
 """
 
 from etlalchemy.compile.compiler import compile_query
+from etlalchemy.compile.report import (
+    BOTH_FILTER_FORCES_INNER,
+    EXPRESSION_JOIN_UNBOUND,
+    FANOUT_REJECTED,
+    FANOUT_RISK,
+    LEFT_JOIN_FILTERED,
+    UNREACHABLE_DIMENSION,
+    CompileEvent,
+    CompileReport,
+    JoinDecision,
+)
 from etlalchemy.compile.result import CompiledQuery
 
-__all__ = ["CompiledQuery", "compile_query"]
+__all__ = [
+    "BOTH_FILTER_FORCES_INNER",
+    "EXPRESSION_JOIN_UNBOUND",
+    "FANOUT_REJECTED",
+    "FANOUT_RISK",
+    "LEFT_JOIN_FILTERED",
+    "UNREACHABLE_DIMENSION",
+    "CompileEvent",
+    "CompileReport",
+    "CompiledQuery",
+    "JoinDecision",
+    "compile_query",
+]

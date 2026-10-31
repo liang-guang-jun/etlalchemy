@@ -6,7 +6,7 @@ import dataclasses
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from etlalchemy.compile.context import CompileReport
+    from etlalchemy.compile.report import CompileReport
 
 
 @dataclasses.dataclass(frozen=True)

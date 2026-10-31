@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from etlalchemy.compile.context import CompileReport
+from etlalchemy.compile.report import CompileReport
 from etlalchemy.compile.result import CompiledQuery
 from etlalchemy.semantic import (
     Comparison,
