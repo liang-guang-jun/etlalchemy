@@ -17,6 +17,17 @@ const DATA = JSON.parse(
   document.getElementById("etlalchemy-diagram").textContent,
 );
 const h = React.createElement;
+
+/**
+ * The smallest zoom the first fit is allowed to use.
+ *
+ * Unbounded, a diagram taller than the frame is fitted by shrinking it until
+ * nothing can be read; fitting to this floor keeps the boxes legible, and the
+ * reader can zoom further out with the wheel, down to the canvas minimum.
+ */
+const FIT_ZOOM = 0.5;
+const CANVAS_MIN_ZOOM = 0.2;
+const ALIGN_DELAY = 450;
 const VERTICAL = DATA.direction === "vertical";
 const POSITIONS = VERTICAL
   ? { source: Position.Bottom, target: Position.Top }
@@ -204,6 +215,10 @@ function EntityBox({ id, data }) {
         column: column,
         lifted: joined.indexOf(column.name) >= 0,
       }))),
+    data.hiddenColumns > 0
+      ? h("p", { className: "ea-more" },
+        "- +" + data.hiddenColumns + " more columns")
+      : null,
     h(Handle, Object.assign({}, handle, {
       type: "source",
       position: POSITIONS.source,
@@ -247,6 +262,27 @@ function distanceTo(path, point) {
     if (distance < best) best = distance;
   }
   return best;
+}
+
+/**
+ * Line the head of the picture up with the head of the view.
+ *
+ * ``fitView`` centres what it fits, so a diagram that needs less than
+ * ``FIT_ZOOM`` is clamped and then centred, and both ends fall outside the
+ * frame. When the fit is clamped the picture is realigned to its topmost box
+ * instead, so a tall diagram is read from its head down.
+ */
+function alignToTop(flow) {
+  try {
+    const view = flow.getViewport();
+    if (Math.abs(view.zoom - FIT_ZOOM) > 0.001) return;
+    const nodes = flow.getNodes();
+    if (nodes.length === 0) return;
+    const top = Math.min(...nodes.map((node) => node.position.y));
+    flow.setViewport({ x: view.x, y: 16 - top * view.zoom, zoom: view.zoom });
+  } catch (error) {
+    // A canvas that cannot be realigned is still a canvas worth drawing.
+  }
 }
 
 function App() {
@@ -372,7 +408,9 @@ function App() {
   }, [setNodes]);
 
   const fit = React.useCallback(() => {
-    if (flow !== null) flow.fitView({ padding: 0.2, duration: 400 });
+    if (flow === null) return;
+    flow.fitView({ padding: 0.2, duration: 400, minZoom: FIT_ZOOM });
+    window.setTimeout(() => alignToTop(flow), ALIGN_DELAY);
   }, [flow]);
 
   /**
@@ -387,6 +425,7 @@ function App() {
     setFlow(instance);
     const fallback = document.getElementById("etlalchemy-fallback");
     if (fallback !== null) fallback.remove();
+    window.setTimeout(() => alignToTop(instance), ALIGN_DELAY);
   }, []);
 
   return h(Over.Provider, { value: emphasis },
@@ -400,8 +439,8 @@ function App() {
           onNodesChange: onNodesChange,
           onInit: ready,
           fitView: true,
-          fitViewOptions: { padding: 0.2, duration: 400 },
-          minZoom: 0.2,
+          fitViewOptions: { padding: 0.2, duration: 400, minZoom: FIT_ZOOM },
+          minZoom: CANVAS_MIN_ZOOM,
           maxZoom: 1.5,
           nodesConnectable: false,
           proOptions: { hideAttribution: true },

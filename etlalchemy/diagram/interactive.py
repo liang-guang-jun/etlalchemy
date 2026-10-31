@@ -84,9 +84,10 @@ def _asset(name: str) -> str:
 def interactive_html(
     diagram: Diagram,
     *,
-    direction: LayoutDirection = "vertical",
+    direction: LayoutDirection = "horizontal",
     title: str | None = None,
     show_columns: bool = True,
+    max_columns: int | None = 6,
     theme: Theme = "light",
 ) -> str:
     """Return the diagram as a self-contained interactive document.
@@ -97,6 +98,7 @@ def interactive_html(
             ``"horizontal"`` to stack it rightwards.
         title: Heading drawn above the picture, or ``None`` for none.
         show_columns: Whether to draw the columns of each entity.
+        max_columns: Columns drawn per box, or ``None`` for every column.
         theme: ``"light"`` or ``"dark"`` to draw in that palette, or
             ``"auto"`` to follow the screen the picture is read on.
 
@@ -109,11 +111,13 @@ def interactive_html(
         ValueError: If ``theme`` names no palette.
     """
     palette = checked(theme)
+    diagram = diagram.trimmed(max_columns)
     fallback = render_html(
         diagram,
         direction=direction,
         title=title,
         show_columns=show_columns,
+        max_columns=max_columns,
         theme=palette,
     )
     name = "Semantic model diagram" if title is None else title
@@ -139,9 +143,12 @@ def interactive_html(
 def picture_height(
     diagram: Diagram,
     *,
-    direction: LayoutDirection = "vertical",
+    direction: LayoutDirection = "horizontal",
     show_columns: bool = True,
     title: str | None = None,
+    max_columns: int | None = 6,
+    height: int | None = None,
+    max_height: int = 920,
 ) -> int:
     """Return how tall a frame holding the canvas should be, in pixels.
 
@@ -149,15 +156,31 @@ def picture_height(
     whole rather than scrolled to inside its own frame, within the bounds a
     notebook page reads well at. The room left under the picture is what the
     corner controls and the minimap stand in.
+
+    Args:
+        diagram: The diagram to measure.
+        direction: ``"vertical"`` to stack relationship depth downwards,
+            ``"horizontal"`` to stack it rightwards.
+        show_columns: Whether the columns of each entity are drawn.
+        title: Heading drawn above the picture, or ``None`` for none.
+        max_columns: Columns drawn per box, or ``None`` for every column.
+        height: Frame height in pixels; used as is when given.
+        max_height: Largest height the picture is allowed to ask for.
+
+    Returns:
+        The frame height, in pixels.
     """
-    placed = _places(diagram, direction, show_columns)
+    if height is not None:
+        return height
+
+    placed = _places(diagram.trimmed(max_columns), direction, show_columns)
     if not placed:
         return 260
 
     bottom = max(spot["y"] + spot["height"] for spot in placed)
-    height = bottom + 2 * 16 + (34 if title else 0) + 64
+    needed = bottom + 2 * 16 + (34 if title else 0) + 64
 
-    return int(min(max(height, 420), 920))
+    return int(min(max(needed, 420), max_height))
 
 
 def _data(
@@ -196,6 +219,7 @@ def _data(
                     }
                     for column in (node.columns if show_columns else ())
                 ],
+                "hiddenColumns": node.hidden_columns if show_columns else 0,
             }
             for node in diagram.nodes
         ],

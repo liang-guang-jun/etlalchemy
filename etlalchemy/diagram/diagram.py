@@ -12,6 +12,7 @@ These are value objects only. Building one from a model is
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from html import escape
 from typing import TYPE_CHECKING, Any, cast
@@ -52,12 +53,15 @@ class DiagramNode:
         columns: Columns of the entity, in declaration order.
         table: Qualified name of the table the entity stands for, or ``None``
             when the entity is not backed by a physical table.
+        hidden_columns: How many columns were dropped to keep the box short,
+            drawn as a last row that says so.
     """
 
     entity_id: str
     name: str
     columns: tuple[DiagramColumn, ...] = ()
     table: str | None = None
+    hidden_columns: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,12 +131,36 @@ class Diagram:
                 return node
         raise KeyError(f"Diagram draws no entity: {entity_id!r}")
 
+    def trimmed(self, max_columns: int | None = 6) -> Diagram:
+        """Return this diagram with at most ``max_columns`` columns per box.
+
+        Primary-key and joined columns are always kept, in their original
+        order, because they are what the picture is read for. The remaining
+        slots are filled with the other columns in declaration order, and the
+        boxes that lose columns carry the count in
+        :attr:`DiagramNode.hidden_columns`.
+
+        Args:
+            max_columns: Columns kept per box, or ``None`` to keep them all.
+
+        Returns:
+            The diagram itself when nothing has to be hidden, a trimmed copy
+            otherwise.
+        """
+        if max_columns is None:
+            return self
+        nodes = tuple(_trimmed_node(node, max_columns) for node in self.nodes)
+        if nodes == self.nodes:
+            return self
+        return Diagram(nodes=nodes, edges=self.edges)
+
     def to_html(
         self,
         *,
-        direction: LayoutDirection = "vertical",
+        direction: LayoutDirection = "horizontal",
         title: str | None = None,
         show_columns: bool = True,
+        max_columns: int | None = 6,
         theme: Theme = "light",
     ) -> str:
         """Return the diagram as a self-contained HTML fragment.
@@ -143,6 +171,9 @@ class Diagram:
             title: Heading drawn above the picture, or ``None`` for none.
             show_columns: Whether to draw the columns of each entity, or only
                 the boxes and the joins between them.
+            max_columns: Columns drawn per box, or ``None`` for every column.
+                Primary-key and joined columns are always drawn, and a box that
+                loses columns says how many.
             theme: ``"light"`` or ``"dark"`` to draw in that palette, or
                 ``"auto"`` to follow the screen the picture is read on.
 
@@ -159,6 +190,7 @@ class Diagram:
             direction=direction,
             title=title,
             show_columns=show_columns,
+            max_columns=max_columns,
             theme=theme,
         )
 
@@ -168,6 +200,7 @@ class Diagram:
         direction: LayoutDirection = "horizontal",
         title: str | None = None,
         show_columns: bool = True,
+        max_columns: int | None = 6,
         interactive: bool = True,
         theme: Theme = "light",
     ) -> object:
@@ -191,6 +224,9 @@ class Diagram:
                 ``"horizontal"`` to stack it rightwards.
             title: Heading drawn above the picture, or ``None`` for none.
             show_columns: Whether to draw the columns of each entity.
+            max_columns: Columns drawn per box, or ``None`` for every column.
+                A wide table is otherwise drawn taller than a notebook frame
+                can show, which shrinks every box to an unreadable size.
             interactive: Whether to draw the canvas rather than the still
                 picture.
             theme: ``"light"`` or ``"dark"`` to draw in that palette, or
@@ -208,6 +244,7 @@ class Diagram:
                 direction=direction,
                 title=title,
                 show_columns=show_columns,
+                max_columns=max_columns,
                 theme=theme,
             )
             display = _html_display(still)
@@ -224,6 +261,7 @@ class Diagram:
             direction=direction,
             title=title,
             show_columns=show_columns,
+            max_columns=max_columns,
             theme=theme,
         )
         frame = _frame(
@@ -233,6 +271,7 @@ class Diagram:
                 direction=direction,
                 show_columns=show_columns,
                 title=title,
+                max_columns=max_columns,
             ),
             title="Semantic model diagram" if title is None else title,
         )
@@ -243,9 +282,10 @@ class Diagram:
     def to_interactive_html(
         self,
         *,
-        direction: LayoutDirection = "vertical",
+        direction: LayoutDirection = "horizontal",
         title: str | None = None,
         show_columns: bool = True,
+        max_columns: int | None = 6,
         theme: Theme = "light",
     ) -> str:
         """Return the diagram as a self-contained interactive document.
@@ -259,6 +299,7 @@ class Diagram:
                 ``"horizontal"`` to stack it rightwards.
             title: Heading drawn above the picture, or ``None`` for none.
             show_columns: Whether to draw the columns of each entity.
+            max_columns: Columns drawn per box, or ``None`` for every column.
             theme: ``"light"`` or ``"dark"`` to draw in that palette, or
                 ``"auto"`` to follow the screen the picture is read on.
 
@@ -275,6 +316,7 @@ class Diagram:
             direction=direction,
             title=title,
             show_columns=show_columns,
+            max_columns=max_columns,
             theme=theme,
         )
 
@@ -296,6 +338,34 @@ class Diagram:
             height=picture_height(self),
             title="Semantic model diagram",
         )
+
+
+def _trimmed_node(node: DiagramNode, max_columns: int) -> DiagramNode:
+    """Return ``node`` with at most ``max_columns`` columns kept.
+
+    Primary-key and joined columns are kept first and in their original order;
+    the remaining slots go to the other columns in declaration order.
+    """
+    columns = node.columns
+    if len(columns) <= max_columns:
+        return node
+    mandatory = {
+        index
+        for index, column in enumerate(columns)
+        if column.is_primary_key or column.is_joined
+    }
+    kept = sorted(mandatory)
+    for index in range(len(columns)):
+        if len(kept) >= max_columns:
+            break
+        if index not in mandatory:
+            kept.append(index)
+    kept.sort()
+    return dataclasses.replace(
+        node,
+        columns=tuple(columns[index] for index in kept),
+        hidden_columns=len(columns) - len(kept),
+    )
 
 
 def _frame(document: str, *, height: int, title: str) -> str:

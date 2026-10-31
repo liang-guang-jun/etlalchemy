@@ -28,24 +28,33 @@ class Reflector:
     The reflector holds the source and the repository, so several calls share
     one cache. It never connects to the database when it is built: every call
     opens a :class:`~etlalchemy.reflect.inspector.ReflectionSession`, which
-    reflects only what the call needs. The default cache is an in-memory
-    repository, which suits a notebook session; pass a file or a SQL repository
-    to persist the cache.
+    reflects only what the call needs.
+
+    Both are optional: with neither, ``Reflector()`` reflects the database the
+    runtime already knows about — a Databricks notebook, the ``DATABRICKS_*``
+    variables, or the ``DEFAULT`` CLI profile — and caches in memory. Pass a
+    source to name the connection, and a file or SQL repository to persist the
+    cache.
     """
 
     def __init__(
         self,
-        source: ReflectSource,
+        source: ReflectSource | None = None,
         repository: ReflectionRepository | None = None,
     ) -> None:
         """Keep ``source`` and the caller-provided ``repository``.
+
+        When ``source`` is ``None``, an auto-detecting
+        :class:`~etlalchemy.reflect.source.ReflectSource` is created, so
+        ``Reflector()`` finds the notebook runtime, the ``DATABRICKS_*``
+        variables or the ``DEFAULT`` CLI profile on its own.
 
         When ``repository`` is ``None``, an
         :class:`~etlalchemy.reflect.repositories.InMemoryReflectionRepository`
         is created, so a call without a cache still works and shares the cache
         across the calls made on the same reflector.
         """
-        self._source = source
+        self._source = ReflectSource() if source is None else source
         self._repository = (
             InMemoryReflectionRepository() if repository is None else repository
         )

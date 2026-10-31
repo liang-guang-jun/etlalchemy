@@ -95,9 +95,10 @@ class _Rect:
 def render_html(
     diagram: Diagram,
     *,
-    direction: LayoutDirection = "vertical",
+    direction: LayoutDirection = "horizontal",
     title: str | None = None,
     show_columns: bool = True,
+    max_columns: int | None = 6,
     theme: Theme = "light",
 ) -> str:
     """Return the diagram as a self-contained HTML fragment.
@@ -108,6 +109,7 @@ def render_html(
             ``"horizontal"`` to stack it rightwards.
         title: Heading drawn above the picture, or ``None`` for none.
         show_columns: Whether to draw the columns of each entity.
+        max_columns: Columns drawn per box, or ``None`` for every column.
         theme: ``"light"`` or ``"dark"`` to draw in that palette, or
             ``"auto"`` to follow the screen the picture is read on.
 
@@ -135,6 +137,7 @@ def render_html(
         diagram,
         direction=direction,
         show_columns=show_columns,
+        max_columns=max_columns,
         uid=uid,
     )
 
@@ -163,8 +166,9 @@ def digest(diagram: Diagram) -> str:
 def render_svg(
     diagram: Diagram,
     *,
-    direction: LayoutDirection = "vertical",
+    direction: LayoutDirection = "horizontal",
     show_columns: bool = True,
+    max_columns: int | None = 6,
     uid: str = "ea",
 ) -> str:
     """Return the diagram as one SVG picture.
@@ -178,11 +182,14 @@ def render_svg(
         direction: ``"vertical"`` to stack relationship depth downwards,
             ``"horizontal"`` to stack it rightwards.
         show_columns: Whether to draw the columns of each entity.
+        max_columns: Columns drawn per box, or ``None`` for every column.
+            Primary-key and joined columns are always drawn.
         uid: Prefix for the names the picture gives its arrowheads.
 
     Returns:
         The ``<svg>`` element, without a stylesheet of its own.
     """
+    diagram = diagram.trimmed(max_columns)
     sizes = {node.entity_id: box_size(node, show_columns) for node in diagram.nodes}
     spots = layout_of(
         [Standing(node.entity_id, *sizes[node.entity_id]) for node in diagram.nodes],
@@ -229,6 +236,8 @@ def box_size(node: DiagramNode, show_columns: bool) -> tuple[float, float]:
     """Return the size a box is drawn at, which is what it has to hold."""
     header = _HEADER + (_TABLE_LINE if node.table else 0.0)
     rows = max(1, len(node.columns)) if show_columns else 0
+    if show_columns and node.hidden_columns:
+        rows += 1
 
     widest = _text_width(node.name, _NAME_SIZE)
     if node.table:
@@ -305,6 +314,18 @@ def _node_markup(node: DiagramNode, box: _Rect, show_columns: bool) -> str:
                 x=box.x,
                 top=box.y + header + index * _ROW,
                 width=box.width,
+            )
+        )
+
+    if show_columns and node.hidden_columns:
+        parts.append(
+            _text(
+                f"- +{node.hidden_columns} more columns",
+                x=box.x + _PAD_X,
+                y=box.y + header + len(node.columns) * _ROW + 16,
+                size=_COLUMN_SIZE,
+                fill="var(--ea-muted)",
+                limit=box.width - 2 * _PAD_X,
             )
         )
 

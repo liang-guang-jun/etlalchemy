@@ -354,21 +354,21 @@ def test_interactive_html_places_the_boxes_where_the_layout_puts_them(
     html = make_model().diagram().to_interactive_html()
     placed = {node["name"]: node for node in nodes_of(html)}
 
-    assert placed["Customer"]["y"] < placed["Order"]["y"]
+    assert placed["Customer"]["x"] < placed["Order"]["x"]
 
 
 def test_interactive_html_follows_the_direction_it_is_asked_for(
     make_model: Callable[[], SemanticModel],
 ) -> None:
     diagram = make_model().diagram()
-    vertical = {node["name"]: node for node in nodes_of(diagram.to_interactive_html())}
-    across = {
+    default = {node["name"]: node for node in nodes_of(diagram.to_interactive_html())}
+    down = {
         node["name"]: node
-        for node in nodes_of(diagram.to_interactive_html(direction="horizontal"))
+        for node in nodes_of(diagram.to_interactive_html(direction="vertical"))
     }
 
-    assert vertical["Customer"]["y"] < vertical["Order"]["y"]
-    assert across["Customer"]["x"] < across["Order"]["x"]
+    assert default["Customer"]["x"] < default["Order"]["x"]
+    assert down["Customer"]["y"] < down["Order"]["y"]
 
 
 def test_interactive_html_draws_the_title_when_asked_for_one(

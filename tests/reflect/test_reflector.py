@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import builtins
 from pathlib import Path
+from types import SimpleNamespace
 
 import etlalchemy.reflect.inspector as inspector_module
 import pytest
+from etlalchemy.reflect.databricks import databricks_connection
 from etlalchemy.reflect import (
     InMemoryReflectionRepository,
     JsonReflectionRepository,
@@ -98,6 +101,48 @@ def test_reflector_defaults_to_an_in_memory_repository() -> None:
     reflector = Reflector(ReflectSource(connection_url="sqlite://"))
 
     assert isinstance(reflector.repository, InMemoryReflectionRepository)
+
+
+def test_reflector_defaults_to_an_auto_detected_source() -> None:
+    """``Reflector()`` reflects whatever the runtime already knows about."""
+    reflector = Reflector()
+
+    assert reflector.source == ReflectSource()
+    assert reflector.source.auto_detect is True
+    assert isinstance(reflector.repository, InMemoryReflectionRepository)
+
+
+def test_a_bare_reflector_finds_the_notebook_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In a Databricks notebook ``Reflector()`` needs no arguments at all."""
+    monkeypatch.setattr(
+        builtins,
+        "dbutils",
+        SimpleNamespace(
+            notebook=SimpleNamespace(
+                entry_point=SimpleNamespace(
+                    getDbutils=lambda: SimpleNamespace(
+                        notebook=lambda: SimpleNamespace(
+                            getContext=lambda: SimpleNamespace(
+                                browserHostName=lambda: SimpleNamespace(
+                                    get=lambda: "adb-123.azuredatabricks.net"
+                                ),
+                                apiToken=lambda: SimpleNamespace(
+                                    get=lambda: "dapi-from-notebook"
+                                ),
+                            )
+                        )
+                    )
+                )
+            )
+        ),
+        raising=False,
+    )
+
+    url, _ = databricks_connection(Reflector().source)
+
+    assert url.startswith("databricks://token:dapi-from-notebook@adb-123")
 
 
 def test_reflector_uses_given_repository() -> None:
