@@ -1,0 +1,45 @@
+{
+  // ---------------------------------------------------------------------
+  // Editor / file conventions
+  // ---------------------------------------------------------------------
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+
+  // ---------------------------------------------------------------------
+  // Python: format, fix and sort imports with Ruff on save
+  // ---------------------------------------------------------------------
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+
+  // ---------------------------------------------------------------------
+  // Python extension
+  // ---------------------------------------------------------------------
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.analysis.typeCheckingMode": "off",
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+
+  // ---------------------------------------------------------------------
+  // Ruff extension: use pyproject.toml, keep tooling in sync with it
+  // ---------------------------------------------------------------------
+  "ruff.configuration": "${workspaceFolder}/pyproject.toml",
+  "ruff.configurationPreference": "filesystemFirst",
+  "ruff.lineLength": 100,
+  "ruff.fixAll": true,
+  "ruff.organizeImports": true,
+
+  // ---------------------------------------------------------------------
+  // Mypy extension
+  // ---------------------------------------------------------------------
+  "mypy-type-checker.args": ["--config-file=${workspaceFolder}/pyproject.toml"],
+  "mypy-type-checker.importStrategy": "fromEnvironment",
+  "mypy-type-checker.reportingScope": "workspace"
+}

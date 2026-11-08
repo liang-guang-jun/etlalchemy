@@ -1,0 +1,65 @@
+{
+  // All tasks run from the workspace root and go through `uv` so the
+  // versions pinned in uv.lock / pyproject.toml are the ones that run.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "check ruff",
+      "type": "shell",
+      "command": "uv run ruff check . && uv run ruff format --check .",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "check mypy",
+      "type": "shell",
+      "command": "uv run mypy",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "check pytest",
+      "type": "shell",
+      "command": "uv run pytest",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "check backend",
+      "detail": "Run ruff, mypy and pytest one after another.",
+      "dependsOrder": "sequence",
+      "dependsOn": ["check ruff", "check mypy", "check pytest"],
+      "problemMatcher": [],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    }
+  ]
+}

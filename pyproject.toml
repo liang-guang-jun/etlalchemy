@@ -1,0 +1,107 @@
+[project]
+name = "etlalchemy"
+version = "0.0.1"
+authors = [
+    { name = "GUANGJUN LIANG", email = "guangjun_l@icloud.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+etlalchemy = "etlalchemy:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.1",
+    "pyperclip>=1.11.0",
+    "pytest>=9.2.0",
+    "ruff>=0.17.4",
+]
+
+# ---------------------------------------------------------------------------
+# Ruff: linter + formatter
+# ---------------------------------------------------------------------------
+[tool.ruff]
+# Keep formatter and linter output stable on Python 3.13.
+target-version = "py313"
+line-length = 100
+src = ["etlalchemy"]
+# Never lint virtual environments, caches, build output or the test suite.
+extend-exclude = [".venv", "tests", ".cache", "build", "dist"]
+# Keep all tool caches under a single, git-ignored ".cache" directory.
+cache-dir = ".cache/ruff"
+
+[tool.ruff.lint]
+# Start from the broad default set plus the plugins listed below.
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (import ordering)
+    "N",   # pep8-naming
+    "D",   # pydocstyle (docstrings)
+    "UP",  # pyupgrade (modern Python 3.13 syntax)
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+    "PT",  # flake8-pytest-style
+    "RUF", # Ruff-specific rules
+]
+
+# Keep the docs rules that matter in this project explicit so it is obvious
+# that every module, class and function must be documented:
+#   D100 - missing docstring in public module
+#   D101 - missing docstring in public class
+#   D102 - missing docstring in public method
+#   D103 - missing docstring in public function
+#   D104 - missing docstring in public package
+#   D105 - missing docstring in magic method
+# Those codes are part of "D"; pydocstyle rules that conflict with the
+# Google style are ignored here instead of by convention only.
+ignore = [
+    "D203", # 1 blank line required before class docstring (conflicts with D211)
+    "D213", # multi-line summary should start on the second line (conflicts with D212)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# ---------------------------------------------------------------------------
+# mypy: static type checking
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.13"
+# Type-check the package only; tests and the virtualenv are out of scope.
+files = ["etlalchemy"]
+# Keep the incremental cache next to the other tools' caches.
+cache_dir = ".cache/mypy"
+strict = true
+pretty = true
+show_error_codes = true
+show_column_numbers = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_reexport = true
+exclude = ["(^|/)\\.venv/", "(^|/)tests/", "^build/", "^dist/"]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+# Keep "lastfailed" and other pytest state out of the project root.
+cache_dir = ".cache/pytest"
+addopts = "-ra --strict-markers --strict-config"
+pythonpath = ["."]
+filterwarnings = ["error"]
