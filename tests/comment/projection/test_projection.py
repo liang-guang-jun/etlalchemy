@@ -8,8 +8,8 @@ from uuid import UUID, uuid4
 
 import pytest
 import sqlalchemy as sa
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.comment.aggregates.errors import UnknownThreadError
 from etlalchemy.comment.application import CommentApplication
 from etlalchemy.comment.projection.projection import run_comment_projection

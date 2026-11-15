@@ -5,8 +5,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from dependency_injector import providers
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.app.bootstrap import Container
 from etlalchemy.catalog.projection.sqlalchemy import SQLAlchemyCatalogView
 from etlalchemy.comment.projection.sqlalchemy import SQLAlchemyCommentView

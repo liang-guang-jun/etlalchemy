@@ -6,8 +6,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from uuid import UUID, uuid4
 
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.conversation.application import ConversationApplication, ConversationOptions
 from etlalchemy.conversation.ports.authorization import SessionUser
 from etlalchemy.conversation.projection.projection import run_conversation_projection

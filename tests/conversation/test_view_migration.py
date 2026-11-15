@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.conversation.projection.sqlalchemy import SQLAlchemyConversationView
 
 

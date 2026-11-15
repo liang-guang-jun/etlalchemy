@@ -78,7 +78,7 @@ def test_sqlite_environment_uses_the_async_sqlalchemy_module(
 
     env = settings.database.to_eventsourcing_env()
 
-    assert env["PERSISTENCE_MODULE"] == "eventsourcing.asyncio.sqlalchemy"
+    assert env["PERSISTENCE_MODULE"] == "etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy"
     assert env["SQLALCHEMY_URL"] == f"sqlite+aiosqlite:///{config_dir.parent / 'default.db'}"
     assert env["CREATE_TABLE"] == "y"
 

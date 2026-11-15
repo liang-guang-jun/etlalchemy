@@ -66,10 +66,12 @@ uv sync
 uv run python -c "import etlalchemy, sys; print(sys.version)"
 ```
 
-The package is installed editable, and `eventsourcing` is resolved from the
-sibling checkout `../libs/eventsourcing`, so a fresh clone outside that layout
-fails at `uv sync`. If you only have this repository, remove the
-`[tool.uv.sources]` entry and pin the PyPI release instead.
+The package is installed editable, and every dependency — `eventsourcing`
+including — comes from PyPI, so `uv sync` works in a fresh clone. The
+asynchronous infrastructure this service is built on (`AsyncApplication`,
+`AsyncProjection`, the SQLAlchemy recorders) is not published by the library; it
+ships vendored in `etlalchemy/_vendor/eventsourcing/asyncio/`, so nothing has to
+be checked out next to this repository.
 
 ## FAQ
 

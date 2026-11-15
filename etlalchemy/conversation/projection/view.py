@@ -7,8 +7,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
-from eventsourcing.asyncio.persistence import AsyncTrackingRecorder
 from eventsourcing.persistence import Tracking
+
+from etlalchemy._vendor.eventsourcing.asyncio.persistence import AsyncTrackingRecorder
 
 
 def as_uuid(value: UUID | str) -> UUID:

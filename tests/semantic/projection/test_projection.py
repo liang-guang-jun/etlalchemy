@@ -8,8 +8,8 @@ from uuid import UUID
 
 import pytest
 import sqlalchemy as sa
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.semantic.aggregates.types import ALL_DIAGRAM, Cardinality, FieldRef, FilterDirection
 from etlalchemy.semantic.application import ModelApplication
 from etlalchemy.semantic.projection.projection import run_semantic_projection

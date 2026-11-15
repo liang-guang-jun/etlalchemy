@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from eventsourcing.asyncio.application import AsyncApplication
-from eventsourcing.asyncio.projection import AsyncProjectionRunner
 from eventsourcing.dispatch import singledispatchmethod
 from eventsourcing.persistence import Tracking
 from eventsourcing.utils import EnvType, get_topic
 
+from etlalchemy._vendor.eventsourcing.asyncio.application import AsyncApplication
+from etlalchemy._vendor.eventsourcing.asyncio.projection import AsyncProjectionRunner
 from etlalchemy.iam.aggregates.auth_provider import AuthProvider
 from etlalchemy.iam.aggregates.group import Group
 from etlalchemy.iam.aggregates.identity import Identity

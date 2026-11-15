@@ -7,8 +7,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.iam.aggregates.errors import AuthenticationError
 from etlalchemy.llm_config.application import LlmConfigApplication
 from etlalchemy.llm_config.ports.authorization import SessionUser

@@ -2,12 +2,21 @@
 
 Event-sourced ETL metadata service. Python 3.13, managed with `uv`; the
 `eventsourcing` library provides aggregates, events and the application
-infrastructure, and the whole service is asynchronous on top of its
-`eventsourcing.asyncio` package.
+infrastructure, and the whole service is asynchronous on top of the asynchronous
+infrastructure that is vendored in `etlalchemy/_vendor/eventsourcing/asyncio/`.
 
-`eventsourcing` is installed editable from the sibling checkout
-`/repo/libs/eventsourcing` (`[tool.uv.sources]` in `pyproject.toml`), so library
-changes are picked up without reinstalling.
+`eventsourcing` itself is installed from PyPI
+(`eventsourcing[crypto,postgres]>=9.5.6,<9.6`); the distribution has no `asyncio`
+package, so the asynchronous base classes (`AsyncApplication`, `AsyncProjection`,
+`AsyncProjectionRunner`, `AsyncTrackingRecorder`, `AsyncSQLAlchemyDatastore`) are
+imported from `etlalchemy._vendor.eventsourcing.asyncio.*` and
+`PERSISTENCE_MODULE` is
+`etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy`. The vendored modules are
+verbatim copies of the `asyncio` branch of `liang-guang-jun/eventsourcing` except
+for the import prefixes and the default topic, carry the upstream BSD-3-Clause
+licence, and are excluded from `ruff` and `mypy` — never reformat them or add
+docstrings, so a later upstream commit stays diffable (see
+`etlalchemy/_vendor/eventsourcing/README.md`).
 
 ## Layout
 
@@ -21,9 +30,9 @@ changes are picked up without reinstalling.
 - `etlalchemy/shared/` — infrastructure adapters every context may reuse:
   `logging/`, the process-wide structured logging facade, `projection.py`, the
   `AsyncLoggedProjection` base every read-model projection extends, and `utils.py`
-  with delivery helpers. It may only import the standard library, `eventsourcing` and
-  `structlog`; contexts and the assembly layer may import it, never the other way round
-  (`tests/shared/` holds its tests).
+  with delivery helpers. It may only import the standard library, `eventsourcing`,
+  `etlalchemy._vendor.eventsourcing` and `structlog`; contexts and the assembly layer
+  may import it, never the other way round (`tests/shared/` holds its tests).
 - Assembly layer in `etlalchemy/app/`: `bootstrap/` (the only assembly entry point:
   `factories.py`, `container.py`, `lifecycle.py` with `run_container`/`api_lifespan`,
   `settings.py` with `load_app_settings()`, all re-exported by `bootstrap/__init__.py`),
@@ -134,8 +143,8 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pyt
 
 ## Read model
 
-- Views extend `eventsourcing.asyncio.persistence.AsyncTrackingRecorder` through
-  `AsyncSQLAlchemyTrackingRecorder`; there is exactly one view class per context and
+- Views extend `etlalchemy._vendor.eventsourcing.asyncio.persistence.AsyncTrackingRecorder`
+  through `AsyncSQLAlchemyTrackingRecorder`; there is exactly one view class per context and
   it serves SQLite (`aiosqlite`) and PostgreSQL (`psycopg`) alike. Every command
   awaits `self.transaction()` and writes the view change plus
   `self.insert_tracking_in_transaction(conn, tracking)` in that one transaction.

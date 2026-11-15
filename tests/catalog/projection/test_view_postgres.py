@@ -12,9 +12,9 @@ from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
 
 import pytest
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from eventsourcing.persistence import Tracking
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.catalog.aggregates.types import DataType
 from etlalchemy.catalog.application import CatalogApplication
 from etlalchemy.catalog.projection.projection import run_catalog_projection

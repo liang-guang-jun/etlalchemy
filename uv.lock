@@ -1084,6 +1084,7 @@ dependencies = [
     { name = "structlog" },
     { name = "tiktoken" },
     { name = "typer" },
+    { name = "typing-extensions" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1131,7 +1132,7 @@ requires-dist = [
     { name = "databricks-langchain", marker = "extra == 'agent-databricks'", specifier = ">=0.22" },
     { name = "databricks-sdk", marker = "extra == 'databricks'", specifier = ">=0.30" },
     { name = "dependency-injector", specifier = ">=4.49.1" },
-    { name = "eventsourcing", extras = ["crypto", "postgres"], editable = "../../libs/eventsourcing" },
+    { name = "eventsourcing", extras = ["crypto", "postgres"], specifier = ">=9.5.6,<9.6" },
     { name = "fastapi", specifier = ">=0.162.2" },
     { name = "fastmcp", specifier = ">=2.12" },
     { name = "langchain-core", specifier = ">=0.3" },
@@ -1152,6 +1153,7 @@ requires-dist = [
     { name = "structlog", specifier = ">=26.1.0" },
     { name = "tiktoken", specifier = ">=0.7" },
     { name = "typer", specifier = ">=0.28.0" },
+    { name = "typing-extensions", specifier = ">=4.12" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 provides-extras = ["agent-graph", "agent-openai", "agent-databricks", "databricks", "agent-obs"]
@@ -1175,9 +1177,13 @@ docs = [{ name = "mkdocs-material", specifier = ">=9.7" }]
 [[package]]
 name = "eventsourcing"
 version = "9.5.6"
-source = { editable = "../../libs/eventsourcing" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/46/ad/90d954ec921942d03593704d564de72e1da0be813ade785b7ab3fbd5d501/eventsourcing-9.5.6.tar.gz", hash = "sha256:f4956cdb4f8a3c718c3131263e745583520691d0a6e9e845bcdb5f1e792f0e22", size = 109269, upload-time = "2026-10-13T22:47:54.003Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5b/5b/ab79ccb60109b03d9658462655f08b4e4177a738326e499dd848edb4b867/eventsourcing-9.5.6-py3-none-any.whl", hash = "sha256:cb6ec44d6e38ede862458c1ef8dc3d2dc0fcc469a157b4386058da6757589416", size = 120984, upload-time = "2026-10-13T22:47:52.466Z" },
 ]
 
 [package.optional-dependencies]
@@ -1187,17 +1193,6 @@ crypto = [
 postgres = [
     { name = "psycopg", extra = ["pool"] },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiosqlite", marker = "extra == 'sqlite'", specifier = ">=0.20" },
-    { name = "cryptography", marker = "extra == 'cryptography'", specifier = ">=46.0.5" },
-    { name = "psycopg", extras = ["pool"], marker = "extra == 'postgres'", specifier = ">=3.2" },
-    { name = "pycryptodome", marker = "extra == 'crypto'", specifier = ">=3.22" },
-    { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'sqlalchemy'", specifier = ">=2.0" },
-    { name = "typing-extensions" },
-]
-provides-extras = ["crypto", "cryptography", "postgres", "sqlalchemy", "sqlite"]
 
 [[package]]
 name = "exceptiongroup"

@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from langchain_core.language_models import BaseChatModel
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.agent.checkpoint import CheckpointSettings
 from etlalchemy.agent.errors import LlmProviderError
 from etlalchemy.agent.factory import AgentFactory, ConnectorFactory

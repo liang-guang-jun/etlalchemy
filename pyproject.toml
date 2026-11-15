@@ -12,15 +12,19 @@ license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    # The asyncio infrastructure of eventsourcing stores events through an
-    # async SQLAlchemy engine, so SQLite needs the aiosqlite driver.
+    # The vendored asyncio infrastructure stores events through an async
+    # SQLAlchemy engine, so SQLite needs the aiosqlite driver.
     "aiosqlite>=0.21",
     # Policy evaluation of the IAM context (model g/g2/keyMatch2).
     "casbin>=1.36",
     "dependency-injector>=4.49.1",
-    # The ``crypto`` extra provides pycryptodome, the backend of
+    # The official distribution provides the aggregates, events and persistence
+    # interfaces; its asynchronous infrastructure is vendored in
+    # ``etlalchemy/_vendor/eventsourcing/asyncio`` and leans on a few internal
+    # helpers, so a minor upgrade must be validated against that copy. The
+    # ``crypto`` extra provides pycryptodome, the backend of
     # ``eventsourcing.cipher:AESCipher`` used to encrypt event state at rest.
-    "eventsourcing[crypto,postgres]>=9.5.6",
+    "eventsourcing[crypto,postgres]>=9.5.6,<9.6",
     "fastapi>=0.162.2",
     "fastmcp>=2.12",
     "langchain-core>=0.3",
@@ -44,6 +48,9 @@ dependencies = [
     "structlog>=26.1.0",
     "tiktoken>=0.7",
     "typer>=0.28.0",
+    # Imported directly by the vendored asyncio infrastructure
+    # (``TypeVar`` with a default); eventsourcing pulls it in transitively.
+    "typing-extensions>=4.12",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -117,15 +124,6 @@ docs = [
 ]
 
 # ---------------------------------------------------------------------------
-# uv: dependency sources
-# ---------------------------------------------------------------------------
-[tool.uv.sources]
-# Resolve ``eventsourcing`` from the editable local checkout instead of PyPI,
-# so library changes are picked up without reinstalling. The path is relative
-# to this file and points at the sibling clone.
-eventsourcing = { path = "../../libs/eventsourcing", editable = true }
-
-# ---------------------------------------------------------------------------
 # Ruff: linter + formatter
 # ---------------------------------------------------------------------------
 [tool.ruff]
@@ -134,7 +132,10 @@ target-version = "py313"
 line-length = 100
 src = ["etlalchemy"]
 # Never lint virtual environments, caches, build output or the test suite.
-extend-exclude = [".venv", "tests", ".cache", "build", "dist"]
+# ``etlalchemy/_vendor`` holds verbatim upstream code (see its README): it is
+# neither documented to house style nor reformatted, so a later upstream commit
+# can be diffed against it.
+extend-exclude = [".venv", "tests", ".cache", "build", "dist", "etlalchemy/_vendor"]
 # Keep all tool caches under a single, git-ignored ".cache" directory.
 cache-dir = ".cache/ruff"
 
@@ -201,6 +202,12 @@ exclude = ["(^|/)\\.venv/", "(^|/)tests/", "^build/", "^dist/"]
 [[tool.mypy.overrides]]
 module = ["casbin"]
 ignore_missing_imports = true
+
+# The vendored asyncio infrastructure is upstream code kept verbatim, so its
+# diagnostics are suppressed while our subclasses still resolve their members.
+[[tool.mypy.overrides]]
+module = ["etlalchemy._vendor.*"]
+ignore_errors = true
 
 # Optional provider packages: only the extras install them, and the code imports
 # them lazily, so type checkers must not require them.

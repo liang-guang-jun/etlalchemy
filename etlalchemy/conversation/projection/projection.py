@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from eventsourcing.asyncio.application import AsyncApplication
-from eventsourcing.asyncio.projection import AsyncProjectionRunner
 from eventsourcing.dispatch import singledispatchmethod
 from eventsourcing.persistence import JSONTranscoder, Tracking
 from eventsourcing.utils import EnvType, get_topic
 
+from etlalchemy._vendor.eventsourcing.asyncio.application import AsyncApplication
+from etlalchemy._vendor.eventsourcing.asyncio.projection import AsyncProjectionRunner
 from etlalchemy.conversation.aggregates.conversation import Conversation
 from etlalchemy.conversation.aggregates.transcoding import (
     register_conversation_transcodings,

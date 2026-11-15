@@ -45,7 +45,8 @@ flowchart TB
 The rule that keeps this honest is mechanical: a context may import
 `etlalchemy/shared/` and its own modules, but never `etlalchemy.app`, never
 FastAPI, never dependency-injector, never pydantic-settings. `etlalchemy/shared/`
-itself may only import the standard library, `eventsourcing` and `structlog`.
+itself may only import the standard library, `eventsourcing`,
+`etlalchemy._vendor.eventsourcing` and `structlog`.
 
 ## The package map
 

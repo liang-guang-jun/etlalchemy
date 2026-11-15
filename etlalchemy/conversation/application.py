@@ -10,10 +10,10 @@ from uuid import UUID, uuid4
 
 import structlog
 from eventsourcing.application import AggregateNotFoundError
-from eventsourcing.asyncio.application import AsyncApplication
 from eventsourcing.persistence import JSONTranscoder, RecordConflictError
 from eventsourcing.utils import EnvType
 
+from etlalchemy._vendor.eventsourcing.asyncio.application import AsyncApplication
 from etlalchemy.conversation.aggregates.conversation import Conversation
 from etlalchemy.conversation.aggregates.errors import (
     InvalidRunTransitionError,

@@ -10,9 +10,9 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from eventsourcing.persistence import Tracking
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.catalog.aggregates.types import DataType
 from etlalchemy.catalog.projection.sqlalchemy import SQLAlchemyCatalogView
 from etlalchemy.catalog.projection.view import CatalogView

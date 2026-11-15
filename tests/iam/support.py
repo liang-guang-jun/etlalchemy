@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from eventsourcing.asyncio.projection import AsyncProjectionRunner
-
+from etlalchemy._vendor.eventsourcing.asyncio.projection import AsyncProjectionRunner
 from etlalchemy.iam.adapters.passwords import PasswordHasher
 from etlalchemy.iam.adapters.secrets import EnvSecretsResolver
 from etlalchemy.iam.application import IamApplication, IamOptions, SessionRef

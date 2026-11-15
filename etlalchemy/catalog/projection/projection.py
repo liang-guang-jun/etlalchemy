@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from eventsourcing.asyncio.projection import AsyncProjectionRunner
 from eventsourcing.dispatch import singledispatchmethod
 from eventsourcing.persistence import Tracking
 from eventsourcing.utils import EnvType, get_topic
 
+from etlalchemy._vendor.eventsourcing.asyncio.projection import AsyncProjectionRunner
 from etlalchemy.catalog.aggregates.catalog import Catalog
 from etlalchemy.catalog.aggregates.schema import Schema
 from etlalchemy.catalog.aggregates.table import Table

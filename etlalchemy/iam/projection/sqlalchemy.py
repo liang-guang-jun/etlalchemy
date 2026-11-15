@@ -16,10 +16,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from eventsourcing.asyncio.sqlalchemy import (
-    AsyncSQLAlchemyDatastore,
-    AsyncSQLAlchemyTrackingRecorder,
-)
 from sqlalchemy import (
     Select,
     Table,
@@ -33,6 +29,10 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import (
+    AsyncSQLAlchemyDatastore,
+    AsyncSQLAlchemyTrackingRecorder,
+)
 from etlalchemy.iam.projection.tables import (
     iam_api_keys,
     iam_audit_log,

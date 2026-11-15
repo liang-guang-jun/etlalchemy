@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from eventsourcing.asyncio.application import AsyncApplication
-from eventsourcing.asyncio.projection import AsyncProjectionRunner
 from eventsourcing.dispatch import singledispatchmethod
 from eventsourcing.persistence import Tracking
 from eventsourcing.utils import EnvType, get_topic
 
+from etlalchemy._vendor.eventsourcing.asyncio.application import AsyncApplication
+from etlalchemy._vendor.eventsourcing.asyncio.projection import AsyncProjectionRunner
 from etlalchemy.comment.aggregates.thread import Thread
 from etlalchemy.comment.projection.sqlalchemy import SQLAlchemyCommentView
 from etlalchemy.comment.projection.view import CommentView

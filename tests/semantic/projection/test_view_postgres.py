@@ -15,9 +15,9 @@ from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
 
 import pytest
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from eventsourcing.persistence import Tracking
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.semantic.aggregates.types import ALL_DIAGRAM
 from etlalchemy.semantic.projection.sqlalchemy import SQLAlchemySemanticView
 from tests.support import async_postgres_url

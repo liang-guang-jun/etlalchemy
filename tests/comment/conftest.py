@@ -6,8 +6,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import pytest
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.comment.application import CommentApplication, CommentOptions
 from etlalchemy.comment.projection.sqlalchemy import SQLAlchemyCommentView
 from tests.comment.support import FakeAuthorization, FakeTargetLookup

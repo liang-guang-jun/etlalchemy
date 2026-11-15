@@ -6,9 +6,9 @@ from collections.abc import Sequence
 from uuid import UUID, uuid4
 
 import structlog
-from eventsourcing.asyncio.application import AsyncApplication
 from eventsourcing.utils import EnvType
 
+from etlalchemy._vendor.eventsourcing.asyncio.application import AsyncApplication
 from etlalchemy.catalog.aggregates.errors import UnknownTableError
 from etlalchemy.catalog.projection.view import CatalogView
 from etlalchemy.semantic.aggregates.errors import InvalidRelationshipError

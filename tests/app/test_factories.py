@@ -8,8 +8,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.app.bootstrap.factories import (
     CatalogViewFactory,
     CommentViewFactory,
@@ -386,12 +386,12 @@ def test_catalog_env_carries_cipher_for_a_shared_datastore(tmp_path: Path) -> No
 
 def test_with_cipher_returns_the_same_mapping_without_a_key() -> None:
     """``with_cipher`` never copies or mutates the environment without a key."""
-    env = {"PERSISTENCE_MODULE": "eventsourcing.asyncio.sqlalchemy"}
+    env = {"PERSISTENCE_MODULE": "etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy"}
 
     assert with_cipher(env, None) is env
     assert with_cipher(env, "") is env
     assert with_cipher(env, CIPHER_KEY) == {
-        "PERSISTENCE_MODULE": "eventsourcing.asyncio.sqlalchemy",
+        "PERSISTENCE_MODULE": "etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy",
         "CIPHER_TOPIC": "eventsourcing.cipher:AESCipher",
         "CIPHER_KEY": CIPHER_KEY,
     }

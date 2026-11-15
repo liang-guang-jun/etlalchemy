@@ -27,7 +27,7 @@ def async_postgres_url(dsn: str) -> str:
 def async_env(url: str) -> dict[str, str]:
     """Returns an eventsourcing environment for the asyncio SQLAlchemy module."""
     return {
-        "PERSISTENCE_MODULE": "eventsourcing.asyncio.sqlalchemy",
+        "PERSISTENCE_MODULE": "etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy",
         "SQLALCHEMY_URL": url,
         "CREATE_TABLE": "y",
     }

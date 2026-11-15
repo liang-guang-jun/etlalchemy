@@ -2,7 +2,7 @@
 
 SQLAlchemy Core builds the table definitions and the DML statements; they are
 executed on the async engine of
-:class:`~eventsourcing.asyncio.sqlalchemy.AsyncSQLAlchemyDatastore`, so the view
+:class:`~etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy.AsyncSQLAlchemyDatastore`, so the view
 change and its tracking record still share one transaction. The same class serves
 SQLite (``aiosqlite``) and PostgreSQL (``psycopg``); only the upsert dialect
 differs.
@@ -15,14 +15,14 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from eventsourcing.asyncio.sqlalchemy import (
-    AsyncSQLAlchemyDatastore,
-    AsyncSQLAlchemyTrackingRecorder,
-)
 from sqlalchemy import Select, and_, delete, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import (
+    AsyncSQLAlchemyDatastore,
+    AsyncSQLAlchemyTrackingRecorder,
+)
 from etlalchemy.llm_config.projection.tables import (
     llm_config_provider_defaults,
     llm_config_provider_shares,

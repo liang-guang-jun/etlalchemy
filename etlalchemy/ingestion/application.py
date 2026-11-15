@@ -9,9 +9,9 @@ from uuid import UUID
 
 import structlog
 from eventsourcing.application import AggregateNotFoundError
-from eventsourcing.asyncio.application import AsyncApplication
 from eventsourcing.utils import EnvType
 
+from etlalchemy._vendor.eventsourcing.asyncio.application import AsyncApplication
 from etlalchemy.catalog.aggregates.errors import DuplicateFieldError
 from etlalchemy.catalog.application import CatalogApplication
 from etlalchemy.catalog.projection.view import CatalogView

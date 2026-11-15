@@ -6,9 +6,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from uuid import UUID
 
-from eventsourcing.asyncio.persistence import AsyncTrackingRecorder
 from eventsourcing.persistence import Tracking
 
+from etlalchemy._vendor.eventsourcing.asyncio.persistence import AsyncTrackingRecorder
 from etlalchemy.catalog.aggregates.types import DataType
 
 

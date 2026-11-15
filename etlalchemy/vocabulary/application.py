@@ -5,9 +5,9 @@ from __future__ import annotations
 from uuid import UUID
 
 import structlog
-from eventsourcing.asyncio.application import AsyncApplication
 from eventsourcing.utils import EnvType
 
+from etlalchemy._vendor.eventsourcing.asyncio.application import AsyncApplication
 from etlalchemy.catalog.projection.view import CatalogView
 from etlalchemy.shared.logging import get_logger
 from etlalchemy.vocabulary.aggregates.domain import Domain

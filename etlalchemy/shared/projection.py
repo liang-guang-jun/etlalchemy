@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from typing import Any, TypeVar
 
-from eventsourcing.asyncio.persistence import AsyncTrackingRecorder
-from eventsourcing.asyncio.projection import AsyncProjection
 from eventsourcing.dispatch import singledispatchmethod
 from eventsourcing.persistence import Tracking
 from eventsourcing.utils import get_topic
 
+from etlalchemy._vendor.eventsourcing.asyncio.persistence import AsyncTrackingRecorder
+from etlalchemy._vendor.eventsourcing.asyncio.projection import AsyncProjection
 from etlalchemy.shared.logging import get_logger
 
 TView = TypeVar("TView", bound=AsyncTrackingRecorder)

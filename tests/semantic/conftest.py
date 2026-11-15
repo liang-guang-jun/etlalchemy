@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 import pytest
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.semantic.application import ModelApplication
 from etlalchemy.semantic.projection.sqlalchemy import SQLAlchemySemanticView
 from tests.semantic.support import FakeCatalogView

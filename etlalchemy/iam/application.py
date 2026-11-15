@@ -17,9 +17,9 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import structlog
-from eventsourcing.asyncio.application import AsyncApplication
 from eventsourcing.utils import EnvType
 
+from etlalchemy._vendor.eventsourcing.asyncio.application import AsyncApplication
 from etlalchemy.iam.adapters.passwords import PasswordHasher
 from etlalchemy.iam.aggregates.auth_provider import AuthProvider
 from etlalchemy.iam.aggregates.errors import (

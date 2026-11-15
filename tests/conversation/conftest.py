@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 import pytest
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.conversation.application import ConversationApplication
 from etlalchemy.conversation.projection.sqlalchemy import SQLAlchemyConversationView
 from tests.conversation.support import FakeAuthorization

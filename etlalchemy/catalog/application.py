@@ -5,10 +5,10 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 import structlog
-from eventsourcing.asyncio.application import AsyncApplication
 from eventsourcing.persistence import JSONTranscoder, Transcoding
 from eventsourcing.utils import EnvType
 
+from etlalchemy._vendor.eventsourcing.asyncio.application import AsyncApplication
 from etlalchemy.catalog.aggregates.catalog import Catalog
 from etlalchemy.catalog.aggregates.errors import UnknownSchemaError, UnknownTableError
 from etlalchemy.catalog.aggregates.schema import Schema

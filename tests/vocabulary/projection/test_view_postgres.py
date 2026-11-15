@@ -15,10 +15,10 @@ from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
 
 import pytest
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from eventsourcing.persistence import Tracking
 from sqlalchemy.exc import IntegrityError
 
+from etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from etlalchemy.vocabulary.projection.sqlalchemy import SQLAlchemyVocabularyView
 from tests.support import async_postgres_url
 

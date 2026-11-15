@@ -18,8 +18,8 @@ from etlalchemy.comment.aggregates.types import DEFAULT_TARGET_TYPES
 from etlalchemy.llm_config.aggregates.types import PROFILE_KINDS
 from etlalchemy.shared.credentials import profile_reference
 
-PERSISTENCE_MODULE = "eventsourcing.asyncio.sqlalchemy"
-"""Persistence module of the asyncio infrastructure used by every context."""
+PERSISTENCE_MODULE = "etlalchemy._vendor.eventsourcing.asyncio.sqlalchemy"
+"""Persistence module of the vendored asyncio infrastructure used by every context."""
 
 SQLITE_ASYNC_DRIVER = "sqlite+aiosqlite"
 """SQLAlchemy async driver of the SQLite backend."""
