@@ -1,0 +1,115 @@
+site_name: ETLAlchemy
+site_description: >-
+  Event-sourced ETL metadata service: catalogs, semantic models, business
+  vocabulary, ingestion, comments and IAM, exposed over HTTP and MCP, with an
+  MCP-driven agent.
+site_url: https://liang-guang-jun.github.io/etlalchemy/
+repo_url: https://github.com/liang-guang-jun/etlalchemy
+repo_name: liang-guang-jun/etlalchemy
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: site
+copyright: AGPL-3.0-or-later
+
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Prerequisites: getting-started/prerequisites.md
+      - Run it locally: getting-started/run-locally.md
+      - First administrator and token: getting-started/first-admin.md
+      - Your first catalog: getting-started/first-catalog.md
+  - Guides:
+      - Configure the service: guides/configure-settings.md
+      - Encrypt events at rest: guides/enable-event-encryption.md
+      - Connect an MCP client: guides/connect-the-mcp-server.md
+      - Import a source database: guides/import-a-database.md
+      - Use the agent: guides/use-the-agent.md
+      - Run the frontend: guides/run-the-frontend.md
+      - Run the quality gates: guides/run-quality-gates.md
+      - Add a bounded context: guides/add-a-bounded-context.md
+      - Build the documentation: guides/build-the-docs.md
+  - Reference:
+      - Configuration: reference/configuration.md
+      - HTTP API: reference/http-api.md
+      - Platform API: reference/platform-api.md
+      - MCP surface: reference/mcp-surface.md
+      - SSE events: reference/sse-events.md
+      - CLI: reference/cli.md
+      - Data store tables: reference/data-model.md
+      - Glossary: reference/glossary.md
+  - Concepts:
+      - Architecture: concepts/architecture.md
+      - Event sourcing: concepts/event-sourcing.md
+      - Read model: concepts/read-model.md
+      - Security model: concepts/security.md
+      - Agent runtime: concepts/agent-runtime.md
+      - Agent tools: concepts/agent-tools.md
+
+markdown_extensions:
+  - toc:
+      permalink: true
+      toc_depth: 2-3
+      title: On this page
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+# Mermaid is rendered by Material's built-in integration, which is driven by the
+# ``custom_fences`` entry above: one ``mermaid`` fenced block becomes a
+# <pre class="mermaid"> element and Material loads the Mermaid bundle lazily.
+# No mkdocs-mermaid2-plugin is needed, so the docs build keeps a single
+# dependency (mkdocs-material) and works offline.
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+extra:
+  generator: false

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- 背景：暗黑模式背景色 -->
+  <rect width="64" height="64" rx="14" fill="#1A1A1A"/>
+  <!-- 烧瓶 -->
+  <path d="M24 14 V26 L14 46 A 6 6 0 0 0 20 52 H44 A 6 6 0 0 0 50 46 L40 26 V14" fill="none" stroke="#FFD700" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 瓶口的塞子 -->
+  <line x1="20" y1="14" x2="44" y2="14" stroke="#FFD700" stroke-width="4" stroke-linecap="round"/>
+  <!-- 内部数据层 -->
+  <line x1="22" y1="40" x2="42" y2="40" stroke="#FFD700" stroke-width="3" stroke-linecap="round"/>
+  <line x1="18" y1="46" x2="46" y2="46" stroke="#FFD700" stroke-width="3" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,55 @@
+"""Aggregates of the comment bounded context."""
+
+from etlalchemy.comment.aggregates.errors import (
+    CommentAuthorMismatchError,
+    CommentBodyEmptyError,
+    CommentBodyTooLongError,
+    CommentCycleError,
+    CommentError,
+    CommentValidationError,
+    DuplicateCommentError,
+    DuplicateThreadError,
+    InvalidThreadStateError,
+    InvalidThreadTransitionError,
+    MentionsLimitExceededError,
+    ThreadDiscardedError,
+    ThreadFullError,
+    ThreadResolvedError,
+    UnknownCommentError,
+    UnknownMentionedUserError,
+    UnknownTargetError,
+    UnknownTargetTypeError,
+    UnknownThreadError,
+)
+from etlalchemy.comment.aggregates.thread import Thread
+from etlalchemy.comment.aggregates.types import (
+    DEFAULT_TARGET_TYPES,
+    Comment,
+    ThreadStatus,
+)
+
+__all__ = [
+    "DEFAULT_TARGET_TYPES",
+    "Comment",
+    "CommentAuthorMismatchError",
+    "CommentBodyEmptyError",
+    "CommentBodyTooLongError",
+    "CommentCycleError",
+    "CommentError",
+    "CommentValidationError",
+    "DuplicateCommentError",
+    "DuplicateThreadError",
+    "InvalidThreadStateError",
+    "InvalidThreadTransitionError",
+    "MentionsLimitExceededError",
+    "Thread",
+    "ThreadDiscardedError",
+    "ThreadFullError",
+    "ThreadResolvedError",
+    "ThreadStatus",
+    "UnknownCommentError",
+    "UnknownMentionedUserError",
+    "UnknownTargetError",
+    "UnknownTargetTypeError",
+    "UnknownThreadError",
+]

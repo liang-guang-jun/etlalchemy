@@ -4,23 +4,126 @@ version = "0.0.1"
 authors = [
     { name = "GUANGJUN LIANG", email = "guangjun_l@icloud.com" }
 ]
+# The service is AGPL-3.0-or-later: the SPDX expression is the single source of
+# truth (PEP 639) and ``license-files`` ships the GNU text in the wheel metadata.
+# Replace it with "AGPL-3.0-only" to drop the "or any later version" clause.
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    # The asyncio infrastructure of eventsourcing stores events through an
+    # async SQLAlchemy engine, so SQLite needs the aiosqlite driver.
+    "aiosqlite>=0.21",
+    # Policy evaluation of the IAM context (model g/g2/keyMatch2).
+    "casbin>=1.36",
+    "dependency-injector>=4.49.1",
+    # The ``crypto`` extra provides pycryptodome, the backend of
+    # ``eventsourcing.cipher:AESCipher`` used to encrypt event state at rest.
+    "eventsourcing[crypto,postgres]>=9.5.6",
+    "fastapi>=0.162.2",
+    "fastmcp>=2.12",
+    "langchain-core>=0.3",
+    "mcp>=2.3",
+    "psycopg[binary]>=3.3.8",
+    # Argon2id password hashing of the IAM context (library-recommended defaults).
+    "pwdlib[argon2]>=0.2",
+    "pydantic-settings>=2.16.2",
+    # ``.env`` is exported by the configuration loader so ``env:`` secret
+    # references and ``${VAR}`` placeholders see the local values.
+    "python-dotenv>=1.0",
+    "python-multipart>=0.0.20",
+    "pyyaml>=6.0.3",
+    # The asyncio extra provides greenlet, required by SQLAlchemy's async engine.
+    "sqlalchemy[asyncio]>=2.0",
+    # Every outbound client is httpx (the OpenAI SDK, the Databricks gateway and
+    # the MCP client) and httpx refuses a SOCKS proxy without this shim: an
+    # ``ALL_PROXY=socks5://…`` exported by the shell or the container would
+    # otherwise fail each agent run with "install httpx[socks]".
+    "socksio>=1.0",
+    "structlog>=26.1.0",
+    "tiktoken>=0.7",
+    "typer>=0.28.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.urls]
+Repository = "https://github.com/liang-guang-jun/etlalchemy"
+Issues = "https://github.com/liang-guang-jun/etlalchemy/issues"
 
 [project.scripts]
-etlalchemy = "etlalchemy:main"
+etla = "etlalchemy.app.cli.main:main"
+etlalchemy = "etlalchemy.app.cli.main:main"
+
+[project.optional-dependencies]
+# LangGraph orchestration plus the durable checkpointers. One saver is picked at
+# runtime from ``database.backend``, so both are declared here.
+agent-graph = [
+    "langgraph>=1.0",
+    "langgraph-checkpoint-postgres>=3.0",
+    "langgraph-checkpoint-sqlite>=3.0",
+]
+# Chat model of the ``openai`` LLM provider kind.
+agent-openai = [
+    "langchain-openai>=0.3",
+]
+# Chat model of the ``databricks_ai_gateway`` LLM provider kind; the factory
+# falls back to the OpenAI-compatible client when this is absent. ``workspace_client``
+# support (used by a local Databricks CLI profile) landed in 0.22. A profile
+# provider also works without this extra: ``databricks-sdk`` resolves the CLI
+# credentials and ``langchain-openai`` calls the serving endpoints.
+agent-databricks = [
+    "databricks-langchain>=0.22",
+]
+# Read-only Databricks data source of the ingestion context and the credential
+# resolver of a ``profile:`` LLM provider. The SDK is also pulled in by
+# ``databricks-langchain``; this extra is for installs that do not need it.
+databricks = [
+    "databricks-sdk>=0.30",
+]
+# Optional MLflow tracing; disabled by default and imported lazily.
+agent-obs = [
+    "mlflow>=2.16",
+]
 
 [build-system]
-requires = ["hatchling"]
+# PEP 639 (``license`` as an SPDX expression plus top-level ``license-files``)
+# needs hatchling 1.27 or newer.
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.16.0",
     "mypy>=2.4.1",
     "pyperclip>=1.11.0",
     "pytest>=9.2.0",
+    "pytest-asyncio>=1.4",
     "ruff>=0.17.4",
+    "types-pyyaml>=6.0.12.20261103",
+    # The agent extras the test suite drives: LangGraph plus the SQLite
+    # checkpointer and the OpenAI chat model adapter. Keeping them here means
+    # ``uv sync`` in a fresh clone is enough to run the whole gate.
+    "langchain-openai>=0.3",
+    "langgraph>=1.0",
+    "langgraph-checkpoint-postgres>=3.0",
+    "langgraph-checkpoint-sqlite>=3.0",
 ]
+# The documentation site: MkDocs with the Material theme, which also renders
+# the Mermaid diagrams through ``pymdownx.superfences``. Kept in its own group
+# so ``uv sync`` for the service does not download the docs toolchain.
+docs = [
+    "mkdocs-material>=9.7",
+]
+
+# ---------------------------------------------------------------------------
+# uv: dependency sources
+# ---------------------------------------------------------------------------
+[tool.uv.sources]
+# Resolve ``eventsourcing`` from the editable local checkout instead of PyPI,
+# so library changes are picked up without reinstalling. The path is relative
+# to this file and points at the sibling clone.
+eventsourcing = { path = "../../libs/eventsourcing", editable = true }
 
 # ---------------------------------------------------------------------------
 # Ruff: linter + formatter
@@ -94,6 +197,17 @@ warn_unused_ignores = true
 no_implicit_reexport = true
 exclude = ["(^|/)\\.venv/", "(^|/)tests/", "^build/", "^dist/"]
 
+# Third-party libraries without a py.typed marker.
+[[tool.mypy.overrides]]
+module = ["casbin"]
+ignore_missing_imports = true
+
+# Optional provider packages: only the extras install them, and the code imports
+# them lazily, so type checkers must not require them.
+[[tool.mypy.overrides]]
+module = ["databricks_langchain.*", "mlflow.*"]
+ignore_missing_imports = true
+
 # ---------------------------------------------------------------------------
 # pytest
 # ---------------------------------------------------------------------------
@@ -105,3 +219,10 @@ cache_dir = ".cache/pytest"
 addopts = "-ra --strict-markers --strict-config"
 pythonpath = ["."]
 filterwarnings = ["error"]
+# The whole code base is asynchronous: plain ``async def`` test functions and
+# async fixtures are collected without an explicit marker.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: needs a running PostgreSQL database (TEST_DATABASE_URL)",
+]

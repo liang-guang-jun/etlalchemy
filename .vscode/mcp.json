@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "etlalchemy": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp"
+    }
+  }
+}

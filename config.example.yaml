@@ -1,0 +1,300 @@
+# Full configuration template with the built-in defaults.
+# Copy the parts you want to change into config.default.yaml or config.<env>.yaml.
+# Environment variables (ETLALCHEMY_*) always win over these files.
+#
+# Extra files can be layered per run; later files win and nested mappings merge:
+#
+#   etla server --config extra.yaml --config production.yaml
+
+database:
+  backend: sqlite
+  sqlite_path: ./catalog.db
+  postgres_dsn: ""
+
+api:
+  host: 0.0.0.0
+  port: 8000
+  debug: false
+  # Browser origins allowed to call the API. Empty disables the CORS middleware
+  # entirely; the Vite dev server proxies requests instead.
+  # Environment override: ETLALCHEMY_API__CORS_ORIGINS='["http://localhost:5173"]'
+  cors_origins: []
+
+logging:
+  # Minimum level: DEBUG / INFO / WARNING / ERROR.
+  level: INFO
+  # One JSON object per line, or the human-readable [asctime][level][name] line.
+  mode: stdout
+  # ANSI colours for mode=stdout; ignored when mode=json.
+  color: true
+  # Loggers silenced completely (set above CRITICAL, so nothing is emitted).
+  quiet:
+    - uvicorn.access
+    - httpx
+    - httpcore
+    - databricks.sdk
+    - psycopg
+    - sqlalchemy.engine
+  # Per-logger levels, applied after quiet; an entry for the same logger wins.
+  loggers:
+    uvicorn: WARNING
+    eventsourcing: WARNING
+
+catalog:
+  # Overrides the global database field by field when uncommented.
+  # database:
+  #   backend: postgres
+  #   postgres_dsn: ${CATALOG_DB_DSN}
+  projection:
+    enabled: true
+    tracking_table_name: catalog_projection_tracking
+
+ingestion:
+  # Omit the database block to share the global datastore with the catalog; an
+  # empty block would create a dedicated datastore instead.
+  # database:
+  #   backend: postgres
+  #   postgres_dsn: ${INGESTION_DB_DSN}
+  projection:
+    enabled: true
+    tracking_table_name: ingestion_projection_tracking
+  secrets:
+    # Root directory used to resolve relative ``file:`` credential references.
+    file_root: null
+    # A connection may also authenticate through a local Databricks CLI profile:
+    # pass ``credential_ref: profile:<name>`` (``profile:`` means the SDK
+    # default) and leave ``endpoint`` empty to use the profile host. The server
+    # must run on the machine that owns ~/.databrickscfg (or
+    # DATABRICKS_CONFIG_FILE) and the CLI token cache.
+  source_kinds:
+    - databricks
+    - postgres
+
+vocabulary:
+  # Omit the database block to share the global datastore with the other contexts.
+  # database:
+  #   backend: postgres
+  #   postgres_dsn: ${VOCABULARY_DB_DSN}
+  projection:
+    enabled: true
+    tracking_table_name: vocabulary_projection_tracking
+
+semantic:
+  # Omit the database block to share the global datastore with the other contexts.
+  # database:
+  #   backend: postgres
+  #   postgres_dsn: ${SEMANTIC_DB_DSN}
+  projection:
+    enabled: true
+    tracking_table_name: semantic_projection_tracking
+
+comment:
+  # Omit the database block to share the global datastore with the other contexts.
+  # database:
+  #   backend: postgres
+  #   postgres_dsn: ${COMMENT_DB_DSN}
+  projection:
+    enabled: true
+    tracking_table_name: comment_projection_tracking
+  max_body_length: 10000
+  max_title_length: 200
+  max_mentions_per_comment: 20
+  max_comments_per_thread: 10000
+  # Advisory only: a deeper reply is still saved and reports depth_warning.
+  # 0 disables the warning; production guidance is 8.
+  soft_max_reply_depth: 8
+  default_page_size: 50
+  max_page_size: 200
+  validate_target_exists: false
+  enforce_target_tenant: false
+  read_requires_session: true
+  allow_multiple_threads: true
+  target_types:
+    - catalog
+    - schema
+    - table
+    - field
+    - semantic_model
+    - semantic_entity
+    - relationship
+    - domain
+    - term
+    - ingestion_connection
+    - import_run
+    - tenant
+    - user
+    - group
+
+iam:
+  # Omit the database block to share the global datastore with the other contexts.
+  # database:
+  #   backend: postgres
+  #   postgres_dsn: ${IAM_DB_DSN}
+  projection:
+    enabled: true
+    tracking_table_name: iam_projection_tracking
+  policy:
+    # Age after which the in-memory Casbin policy is rebuilt from the read model.
+    reload_interval_seconds: 1.0
+  password_min_length: 8
+  max_api_keys: 20
+  api_key_grace_max_days: 30
+  max_group_depth: 64
+  password_session_minutes: 480
+  oidc_session_minutes: 480
+  api_key_session_minutes: 60
+  # Pepper of the API key hashes; leave null to keep a plain SHA-256 digest.
+  api_key_pepper: null
+  # Root directory used to resolve relative ``file:`` secret references.
+  secrets_file_root: null
+  record_denied_authorizations: true
+  # Prefix of the opaque bearer tokens the HTTP API and the MCP server accept.
+  # A token is ``<prefix><session_id>``, issued by POST /iam/auth/token.
+  bearer_token_prefix: iam_sess_
+  # How long before expiry a client should refresh its session. Every session
+  # response carries the resulting moment as ``refresh_at``. Must stay below
+  # the shortest session lifetime (api_key_session_minutes by default).
+  session_refresh_lead_minutes: 5
+
+mcp:
+  # Production must keep this true: without it every client that reaches /mcp
+  # can call every write tool. Set ETLALCHEMY_MCP__REQUIRE_AUTH=false only for
+  # tests or local tools such as the MCP Inspector.
+  require_auth: true
+
+llm_config:
+  # Omit the database block to share the global datastore with the other contexts.
+  # database:
+  #   backend: postgres
+  #   postgres_dsn: ${LLM_CONFIG_DB_DSN}
+  projection:
+    enabled: true
+    tracking_table_name: llm_config_projection_tracking
+
+conversation:
+  # Omit the database block to share the global datastore with the other contexts.
+  # database:
+  #   backend: postgres
+  #   postgres_dsn: ${CONVERSATION_DB_DSN}
+  projection:
+    enabled: true
+    tracking_table_name: conversation_projection_tracking
+  max_message_chars: 262144
+  max_content_chars: 65536
+  default_page_size: 50
+  max_page_size: 200
+
+agent:
+  # How the agent reaches the MCP tools:
+  #   in_process — call the server object of this process (default); no URL,
+  #                port or handshake, and no proxy can intercept it.
+  #   http       — call the endpoint below like any other MCP client; use it
+  #                when the agent runs in a different process.
+  mcp_transport: in_process
+  # Streamable HTTP endpoint of the MCP server; only read by the http transport.
+  mcp_url: "http://127.0.0.1:8000/mcp"
+  request_timeout_seconds: 30
+  connect_retries: 3
+  history_limit: 20
+  auth:
+    # service_account exchanges the API key below for a session through
+    # POST /iam/auth/api-key; user_proxy forwards the caller's bearer token.
+    mode: service_account
+    credential_ref: null
+    tenant_id: null
+  # The only LLM provider described by a file. On startup the lifecycle creates
+  # it when no provider of that name exists and synchronises its endpoint,
+  # default_model, options and credential when it does, even if the database
+  # already holds another public provider; changing the block therefore takes
+  # effect on the next start. When no system default exists yet the provider
+  # also becomes the system default. Every other provider is created through
+  # /agent/llm-providers. An inline ``token`` is encrypted at rest and therefore
+  # requires ``cipher_key``.
+  #
+  # ``credential_ref`` is resolved against the process environment per call, so
+  # a key kept in the git-ignored ``.env`` of the configuration directory is
+  # enough (the loader exports it before the YAML files are read) and rotating
+  # the key needs no restart. A ``profile:<name>`` reference instead reads
+  # ~/.databrickscfg through ``databricks-sdk`` (``profile:`` means the SDK
+  # default); no token or endpoint is needed, and the ``databricks`` extra must
+  # be installed.
+  #
+  # llm:
+  #   name: deepseek
+  #   kind: openai                     # openai | databricks_ai_gateway
+  #   endpoint: "https://api.deepseek.com"   # any OpenAI-compatible base URL
+  #   credential_ref: "env:DEEPSEEK_API_KEY"
+  #   token: null
+  #   default_model: deepseek-flash
+  #   options:
+  #     temperature: "0.0"
+  #     max_tokens: "8192"
+  #
+  # A local Databricks CLI profile needs neither a secret nor an endpoint: the
+  # SDK reads ~/.databrickscfg (or DATABRICKS_CONFIG_FILE) and the profile named
+  # by DATABRICKS_CONFIG_PROFILE when the reference ends at ``profile:``. A
+  # profile provider must still name the serving endpoint as ``default_model``:
+  #
+  # llm:
+  #   name: databricks-local
+  #   kind: databricks_ai_gateway
+  #   credential_ref: "profile:DEFAULT"
+  #   default_model: databricks-claude-sonnet-4-5
+  limits:
+    max_tool_calls: 25
+    max_wall_clock_seconds: 600
+    tool_timeout_seconds: 60
+    # The model reads at most ``max_tool_output_chars`` of a result; the
+    # browser gets the smaller previews below, because they travel in every
+    # event and are stored with the message.
+    max_tool_output_chars: 32000
+    max_tool_args_chars: 2000
+    max_tool_result_preview_chars: 4000
+    max_reasoning_chars: 16000
+    token_budget: 128000
+  tools:
+    allowlist: null
+    denylist: []
+    # Argument names masked in the preview the browser shows; matching ignores
+    # case and separators (``apiKey`` == ``api_key``).
+    redact_argument_keys:
+      - api_key
+      - api_token
+      - authorization
+      - credential
+      - credential_ref
+      - password
+      - private_key
+      - secret
+      - token
+    approval:
+      # Deny by default: a destructive tool that matches no rule is not run.
+      default: deny
+      rules:
+        - match: "discard_*"
+          action: require_approval
+  checkpoint:
+    # LangGraph owns the ``checkpoints``/``checkpoint_writes`` tables; the paths
+    # default to the global database settings.
+    enabled: true
+    sqlite_path: null
+    postgres_dsn: null
+  observability:
+    mlflow:
+      enabled: false
+      tracking_uri: "http://localhost:5000"
+      experiment_name: "etlalchemy-agent"
+      run_tags: {}
+
+# Event encryption. Leave unset to keep events in plaintext (development only).
+# Generate with:
+#   python -c "import base64,os;print(base64.b64encode(os.urandom(32)).decode())"
+# In production, set ETLALCHEMY_CIPHER_KEY instead of committing the key.
+#
+# Enabling a key encrypts the state of every event written from then on, for
+# both the catalog and the ingestion application. Existing plaintext events are
+# NOT readable afterwards: eventsourcing applies the cipher to every read, so
+# point a fresh event store at a fresh database, and revoke/rotate inline
+# credentials afterwards. Rotating the key itself requires re-encrypting the
+# store, which this project does not implement.
+# cipher_key: "ecRkyusA1c9KGa5anPZSt7Bi2PXw7Or2cSb+iAa6XQo="

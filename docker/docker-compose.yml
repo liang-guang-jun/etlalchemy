@@ -1,0 +1,58 @@
+# Postgres 18 for local development only. Kept under docker/ so the
+# application root stays free for TOML-based configuration.
+#
+# Run from the repository root:
+#   docker compose -f docker/docker-compose.yml up -d --wait
+#   docker compose -f docker/docker-compose.yml ps
+#   docker compose -f docker/docker-compose.yml logs -f postgres
+#   docker compose -f docker/docker-compose.yml down      # keep data
+#   docker compose -f docker/docker-compose.yml down -v   # delete data
+#
+# Compose loads docker/.env automatically (project directory = this folder)
+# and falls back to the defaults below when it is absent.
+#
+# Connection string (host):
+#   postgresql://etlalchemy:etlalchemy@localhost:55432/etlalchemy
+name: etlalchemy
+
+services:
+  postgres:
+    # Pin the major version. Use "postgres:18" instead for the Debian image.
+    image: ${POSTGRES_IMAGE:-postgres:18-alpine}
+    container_name: etlalchemy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-etlalchemy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-etlalchemy}
+      POSTGRES_DB: ${POSTGRES_DB:-etlalchemy}
+      # Deterministic timestamps for dev/test data.
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      # 55432 by default so a system-wide Postgres can keep using 5432.
+      - "${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      # Postgres 18 sets PGDATA=/var/lib/postgresql/18/docker and declares
+      # /var/lib/postgresql as the volume, so mount that parent directory.
+      - etlalchemy-postgres:/var/lib/postgresql
+      # Only executed when the data directory is still empty.
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - log_statement=ddl
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  # "etlalchemy" project prefix makes the real name etlalchemy_etlalchemy-postgres.
+  etlalchemy-postgres:

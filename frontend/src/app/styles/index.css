@@ -1,0 +1,143 @@
+@import 'tailwindcss';
+
+@theme {
+  /* Brand (Power BI yellow) */
+  --color-brand: #f2c811;
+  --color-brand-hover: #e2b80e;
+  --color-brand-text: #252423;
+  /* Same hue, darkened so it stays legible as text on light surfaces. */
+  --color-brand-ink: #a67c00;
+  /* Amber tuned for text on the pale warning tint. */
+  --color-warning-ink: #8a5a00;
+
+  /* Backgrounds and surfaces */
+  --color-bg-canvas: #f3f2f1;
+  --color-bg-surface: #ffffff;
+  --color-bg-hover: #f8f8f8;
+  /* One step lighter than bg-hover: used by dense lists such as the resource
+     tree, where a full hover fill would steal attention from the content. */
+  --color-bg-hover-subtle: #fafafa;
+
+  /* Agent surfaces. The three layers stack in the same order as the product
+     chrome: rail, history panel, chat canvas. */
+  --color-agent-rail: #f3f2f1;
+  --color-agent-panel: #fafaf9;
+  --color-agent-canvas: #ffffff;
+
+  /* Text */
+  --color-text-primary: #252423;
+  --color-text-secondary: #605e5c;
+  --color-text-disabled: #a19f9d;
+
+  /* Borders */
+  --color-border-base: #edebe9;
+  --color-border-strong: #d2d0ce;
+
+  /* Status */
+  --color-danger: #a4262c;
+  --color-success: #107c10;
+  --color-warning: #ffb900;
+  /* Informational accents such as the schema badge. */
+  --color-info: #0f6cbd;
+
+  /* Geometry */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
+
+  /* Legacy aliases kept so existing screens inherit the same palette. */
+  --color-surface: #ffffff;
+  --color-surface-muted: #f3f2f1;
+  --color-border: #edebe9;
+  --color-text: #252423;
+  --color-text-muted: #605e5c;
+  --color-accent: #252423;
+  --color-accent-hover: #000000;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.05);
+}
+
+@layer base {
+  html {
+    background: var(--color-bg-canvas);
+    color: var(--color-text-primary);
+  }
+
+  html[data-theme='dark'] {
+    --color-brand-ink: #f2c811;
+    --color-warning-ink: #ffd335;
+    --color-bg-canvas: #1b1a19;
+    --color-bg-surface: #252423;
+    --color-bg-hover: #323130;
+    --color-bg-hover-subtle: #2b2a29;
+    --color-agent-rail: #181818;
+    --color-agent-panel: #1e1e1e;
+    --color-agent-canvas: #252526;
+    --color-text-primary: #f3f2f1;
+    --color-text-secondary: #c8c6c4;
+    --color-text-disabled: #797775;
+    --color-border-base: #3b3a39;
+    --color-border-strong: #484644;
+    --color-surface: #252423;
+    --color-surface-muted: #1b1a19;
+    --color-border: #3b3a39;
+    --color-text: #f3f2f1;
+    --color-text-muted: #c8c6c4;
+    --color-accent: #f3f2f1;
+    --color-accent-hover: #ffffff;
+    --color-danger: #f1707b;
+    --color-success: #6bb700;
+    --color-warning: #ffd335;
+    --color-info: #4cc2ff;
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.6);
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.6);
+
+    /* React Flow ships a light chrome of its own and only switches it through
+       its `colorMode` prop, which this app does not set — the theme lives in a
+       `data-theme` attribute instead. Mapping the two variables it reads onto
+       our tokens keeps the zoom controls and the attribution readable. */
+    --xy-controls-button-background-color: var(--color-bg-surface);
+    --xy-controls-button-background-color-hover: var(--color-bg-hover);
+    --xy-controls-button-color: var(--color-text-primary);
+    --xy-controls-button-color-hover: var(--color-text-primary);
+    --xy-controls-button-border-color: var(--color-border-base);
+    --xy-controls-box-shadow: 0 0 0 1px var(--color-border-base);
+    --xy-attribution-background-color: transparent;
+  }
+
+  body {
+    margin: 0;
+    font-family:
+      'Segoe UI',
+      system-ui,
+      -apple-system,
+      sans-serif;
+    font-size: 14px;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='menuitem'],
+  [role='tab'],
+  summary {
+    cursor: pointer;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

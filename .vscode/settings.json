@@ -37,6 +37,46 @@
   "ruff.organizeImports": true,
 
   // ---------------------------------------------------------------------
+  // TypeScript / React / CSS: format with Prettier and autofix ESLint on save
+  // ---------------------------------------------------------------------
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit"
+    }
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit"
+    }
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "eslint.validate": ["javascript", "typescript", "typescriptreact"],
+  "eslint.workingDirectories": [{ "directory": "frontend", "changeProcessCWD": true }],
+  "search.exclude": {
+    "frontend/node_modules": true,
+    "frontend/coverage": true,
+    "frontend/playwright-report": true,
+    "frontend/test-results": true,
+    "dist": true
+  },
+  "files.watcherExclude": {
+    "**/frontend/node_modules/**": true,
+    "**/dist/**": true
+  },
+
+  // ---------------------------------------------------------------------
   // Mypy extension
   // ---------------------------------------------------------------------
   "mypy-type-checker.args": ["--config-file=${workspaceFolder}/pyproject.toml"],

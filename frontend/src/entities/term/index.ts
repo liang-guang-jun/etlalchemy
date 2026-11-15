@@ -1,0 +1,43 @@
+export {
+  changeTerm,
+  createTerm,
+  discardTerm,
+  fetchTerm,
+  fetchTerms,
+  fetchTermsForField,
+  fetchTermsForTable,
+  fetchTermsForTarget,
+  linkTerm,
+  moveTerm,
+  searchTerms,
+  TARGET_KINDS,
+  termLinkSchema,
+  termSchema,
+  termSearchResultSchema,
+  termSummarySchema,
+  transitionTerm,
+  unlinkTerm,
+  type Term,
+  type TermLink,
+  type TermSearchResult,
+  type TermSummary,
+  type TermTransition,
+} from './api';
+export {
+  termKeys,
+  useTerm,
+  useTermSearch,
+  useTerms,
+  useTermsForField,
+  useTermsForTarget,
+} from './queries';
+export {
+  buildTermTree,
+  flattenTermTree,
+  searchSources,
+  summarySources,
+  termTreeKey,
+  type TermTreeNode,
+  type TermTreeSource,
+} from './model/term-tree';
+export { TermPicker, type TermPickerProps } from './ui/TermPicker';

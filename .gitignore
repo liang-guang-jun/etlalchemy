@@ -9,3 +9,24 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Local environment / secrets (see docker/.env.example)
+.env
+*.db
+*.db-shm
+*.db-wal
+
+# Local configuration overrides (see config.example.yaml)
+config.*.yaml
+!config.example.yaml
+
+# Frontend (see frontend/README.md); the production bundle is `dist/ui`
+node_modules/
+frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+frontend/.vite/
+frontend/playwright/.cache/
+
+# MkDocs build output (see mkdocs.yml)
+site/
