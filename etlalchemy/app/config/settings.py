@@ -511,6 +511,59 @@ class McpSettings(BaseModel):
     """
 
 
+class DatabricksAppsSettings(BaseModel):
+    """Settings of the ``etla deploy --databricks-apps`` target."""
+
+    profile: str = ""
+    """Databricks CLI profile the deployment authenticates with.
+
+    An empty value lets the Databricks SDK pick the profile itself
+    (``DATABRICKS_CONFIG_PROFILE``, then ``DEFAULT``).
+    """
+
+    app_name: str = "etlalchemy"
+    """Name of the Databricks app the deployment targets.
+
+    The app has to exist already: the command creates neither the app nor its
+    service principal, so a typo fails fast instead of creating a second app.
+    """
+
+    workspace_path: str = ""
+    """Workspace folder the source is synchronised to.
+
+    An empty value resolves to ``/Workspace/Users/<current user>/<app_name>``,
+    which the caller owns and can therefore write to.
+    """
+
+    command: list[str] = Field(
+        default_factory=lambda: [
+            "uv",
+            "run",
+            "uvicorn",
+            "etlalchemy.app.main:app",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "$DATABRICKS_APP_PORT",
+        ],
+    )
+    """Command written into the generated ``app.yaml``.
+
+    The platform substitutes ``$DATABRICKS_APP_PORT`` with the port the app must
+    listen on. ``uv run`` reuses the environment the build step created with
+    ``uv sync``.
+    """
+
+    health_timeout_seconds: int = Field(default=120, ge=1, le=300)
+    """Seconds the platform waits for the health endpoint after a deployment."""
+
+
+class DeploySettings(BaseModel):
+    """Settings of the deployment tooling."""
+
+    databricks: DatabricksAppsSettings = Field(default_factory=DatabricksAppsSettings)
+
+
 class ApiSettings(BaseModel):
     """Settings of the HTTP API."""
 
@@ -519,6 +572,41 @@ class ApiSettings(BaseModel):
     debug: bool = False
     cors_origins: list[str] = Field(default_factory=list)
     """Browser origins allowed to call the API; empty disables CORS entirely."""
+
+    prefix: str = "/api"
+    """Path prefix every API router is mounted under.
+
+    The SPA (``ui_dir``) is served from the site root, so the browser can call
+    ``/api/...`` on the same origin and no client route can collide with an API
+    path. Set it to ``""`` to serve the routers at the site root instead.
+    """
+
+    ui_dir: str = "dist/ui"
+    """Directory of the built SPA; a relative path resolves against the working directory.
+
+    The directory is optional: when it does not hold an ``index.html`` the server
+    answers only the API, which is what the test suite and the MCP-only usage do.
+    """
+
+    health_path: str = "/health"
+    """Path of the liveness endpoint the platform health check calls."""
+
+    @field_validator("prefix")
+    @classmethod
+    def _validate_prefix(cls, value: str) -> str:
+        """Normalises the prefix to a leading slash and no trailing slash."""
+        text = value.strip().strip("/")
+        return f"/{text}" if text else ""
+
+    @field_validator("health_path")
+    @classmethod
+    def _validate_health_path(cls, value: str) -> str:
+        """Requires an absolute path for the health endpoint."""
+        text = value.strip()
+        if not text.startswith("/"):
+            msg = "health_path must start with '/'"
+            raise ValueError(msg)
+        return text
 
 
 class LoggingSettings(BaseModel):
@@ -574,6 +662,7 @@ class AppSettings(BaseSettings):
     conversation: ConversationSettings = Field(default_factory=ConversationSettings)
     agent: AgentSettings = Field(default_factory=AgentSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
+    deploy: DeploySettings = Field(default_factory=DeploySettings)
     cipher_key: str | None = None
     """Base64-encoded AES key (16/24/32 bytes); enables event encryption when set."""
 

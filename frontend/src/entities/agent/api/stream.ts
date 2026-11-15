@@ -1,4 +1,4 @@
-import { readAccessToken } from '@/shared/api/client';
+import { apiUrl, readAccessToken } from '@/shared/api/client';
 import { openEventStream } from '@/shared/api/sse';
 
 import { parseAgentEvent, type AgentEvent } from '../model/events';
@@ -73,7 +73,7 @@ export interface StreamEditedMessageOptions extends StreamOptions {
  * @param options Conversation, prompt, cancellation and the event callback.
  */
 export async function streamAgentMessage(options: StreamMessageOptions): Promise<void> {
-  await openEventStream(`/agent/conversations/${options.conversationId}/messages:stream`, {
+  await openEventStream(apiUrl(`/agent/conversations/${options.conversationId}/messages:stream`), {
     body: {
       content: options.content,
       llm_provider_id: options.llmProviderId ?? null,
@@ -102,7 +102,9 @@ export async function streamAgentMessage(options: StreamMessageOptions): Promise
  */
 export async function streamEditedMessage(options: StreamEditedMessageOptions): Promise<void> {
   await openEventStream(
-    `/agent/conversations/${options.conversationId}/messages/${options.messageId}/edit:stream`,
+    apiUrl(
+      `/agent/conversations/${options.conversationId}/messages/${options.messageId}/edit:stream`,
+    ),
     {
       body: {
         content: options.content,
@@ -128,16 +130,19 @@ export async function streamEditedMessage(options: StreamEditedMessageOptions): 
  * @param options Run, approval, decision, cancellation and the event callback.
  */
 export async function streamApprovalDecision(options: StreamApprovalOptions): Promise<void> {
-  await openEventStream(`/agent/runs/${options.runId}/approvals/${options.approvalId}:stream`, {
-    body: { approved: options.approved },
-    token: readAccessToken(),
-    requestId: crypto.randomUUID(),
-    signal: options.signal,
-    onFrame: (frame) => {
-      const event = decode(frame);
-      if (event !== null) {
-        options.onEvent(event);
-      }
+  await openEventStream(
+    apiUrl(`/agent/runs/${options.runId}/approvals/${options.approvalId}:stream`),
+    {
+      body: { approved: options.approved },
+      token: readAccessToken(),
+      requestId: crypto.randomUUID(),
+      signal: options.signal,
+      onFrame: (frame) => {
+        const event = decode(frame);
+        if (event !== null) {
+          options.onEvent(event);
+        }
+      },
     },
-  });
+  );
 }

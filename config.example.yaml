@@ -15,8 +15,17 @@ api:
   host: 0.0.0.0
   port: 8000
   debug: false
+  # Every router is mounted below this prefix, so the built SPA can be served
+  # from the site root of the same origin (this is what a Databricks App does).
+  # Set it to "" to serve the routers at the root again.
+  prefix: /api
+  # Built SPA; a relative path is read against the project root. The directory is
+  # optional: without an index.html the server answers only the API.
+  ui_dir: dist/ui
+  # Liveness endpoint of the hosting platform's health check.
+  health_path: /health
   # Browser origins allowed to call the API. Empty disables the CORS middleware
-  # entirely; the Vite dev server proxies requests instead.
+  # entirely; the SPA calls /api on its own origin and needs no CORS entry.
   # Environment override: ETLALCHEMY_API__CORS_ORIGINS='["http://localhost:5173"]'
   cors_origins: []
 
@@ -285,6 +294,35 @@ agent:
       tracking_uri: "http://localhost:5000"
       experiment_name: "etlalchemy-agent"
       run_tags: {}
+
+# Databricks Apps deployment target. The source, its dependencies and the built
+# SPA are synchronised to a workspace folder with
+#
+#   etla deploy --databricks-apps --profile <profile> [--dry-run]
+#
+# The app itself is never created by the command: create it once with
+# `databricks apps create <name>` so a typo cannot produce a second app.
+deploy:
+  databricks:
+    # Databricks CLI profile; an empty value uses the SDK default.
+    profile: ""
+    # Existing app to deploy to.
+    app_name: etlalchemy
+    # Workspace folder of the synchronised source; empty means
+    # /Workspace/Users/<current user>/<app_name>.
+    workspace_path: ""
+    # The platform substitutes $DATABRICKS_APP_PORT at runtime.
+    command:
+      - uv
+      - run
+      - uvicorn
+      - etlalchemy.app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - $DATABRICKS_APP_PORT
+    # Seconds the platform waits for /health after a deployment.
+    health_timeout_seconds: 120
 
 # Event encryption. Leave unset to keep events in plaintext (development only).
 # Generate with:

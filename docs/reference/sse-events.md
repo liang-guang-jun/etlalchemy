@@ -110,7 +110,7 @@ When a run pauses, the stream ends with `message.completed`
 stream to close is never left hanging. The `approvals` list in the payload is the
 whole run.
 
-Post the decision to `/agent/runs/{run_id}/approvals/{approval_id}:stream`; it
+Post the decision to `/api/agent/runs/{run_id}/approvals/{approval_id}:stream`; it
 continues the same run **and the same assistant message**.
 
 `approval.resolved` is emitted on the stream that applies a decision, including

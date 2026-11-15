@@ -14,15 +14,19 @@ Node 20+, `pnpm`, and a backend on port 8000
 
 ```mermaid
 flowchart LR
-    b["Browser :5173"] -->|"/catalog, /agent, /iam, /mcp …"| v["Vite dev server"]
-    b -->|"client-side route<br/>Accept: text/html"| idx["index.html"]
-    v -->|"proxied XHR"| api["FastAPI :8000"]
+    b["Browser :5173"] -->|"/api, /mcp"| v["Vite dev server"]
+    b -->|"client-side route"| idx["index.html"]
+    v -->|"proxied request"| api["FastAPI :8000"]
 ```
 
-*Figure 1: The proxy keeps the browser on one origin, so no CORS preflight is needed. A document request for a route that looks like an API path is answered with `index.html` instead.*
+*Figure 1: The proxy keeps the browser on one origin, so no CORS preflight is needed. Only `/api` and `/mcp` are proxied; every other path is a client-side route the SPA resolves itself.*
 
-That `bypass` is what makes a reload on `/iam/users` work: the SPA route and the
-API path share a prefix, and only the `Accept` header tells them apart.
+Because the API lives below `/api`, a reload on `/iam/users` is simply the SPA
+entry point: the dev server answers it with `index.html` and the browser then
+requests `/api/iam/sessions/current`. Production behaves the same way — FastAPI
+serves `dist/ui` and answers the same `/api` paths from the same origin, which is
+also what a Databricks App does. The axios client reads `VITE_API_BASE`
+(default `/api`), so a deployment can mount the API elsewhere at build time.
 
 ## Run it
 

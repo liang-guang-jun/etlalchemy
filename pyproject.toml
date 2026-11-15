@@ -38,6 +38,9 @@ dependencies = [
     "python-dotenv>=1.0",
     "python-multipart>=0.0.20",
     "pyyaml>=6.0.3",
+    # The arity of every command line option and the deployment progress
+    # reporting are rendered with rich.
+    "rich>=13",
     # The asyncio extra provides greenlet, required by SQLAlchemy's async engine.
     "sqlalchemy[asyncio]>=2.0",
     # Every outbound client is httpx (the OpenAI SDK, the Databricks gateway and

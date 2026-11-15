@@ -65,7 +65,7 @@ The command prints the new user id.
 ## 3. Exchange the password for a token
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8000/iam/auth/token \
+TOKEN=$(curl -s -X POST http://localhost:8000/api/iam/auth/token \
   -d 'username=you@example.com' -d 'password=Passw0rd!' \
   | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
 echo "$TOKEN"
@@ -79,7 +79,7 @@ authorizes across your memberships.
 ## 4. Use the token
 
 ```bash
-curl -s http://localhost:8000/iam/sessions/current -H "Authorization: Bearer $TOKEN"
+curl -s http://localhost:8000/api/iam/sessions/current -H "Authorization: Bearer $TOKEN"
 ```
 
 `GET /iam/sessions/current` is the only way to ask "who am I": the session id is
@@ -103,8 +103,8 @@ with an existing session.
 revocation is applied by the projection — poll for the `401` instead of
 asserting it immediately.
 
-**Do catalog routes need it?** Not today. Only `/iam/*`, `/comments/*` and
-`/agent/*` verify the token; see the [Security model](../concepts/security.md).
+**Do catalog routes need it?** Not today. Only `/api/iam/*`, `/api/comments/*` and
+`/api/agent/*` verify the token; see the [Security model](../concepts/security.md).
 
 ## See also
 

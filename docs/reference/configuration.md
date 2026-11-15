@@ -30,6 +30,9 @@ request.
 | `api.host` | str | `0.0.0.0` | bind address |
 | `api.port` | int | `8000` | HTTP and MCP port |
 | `api.debug` | bool | `false` | default of `--reload` |
+| `api.prefix` | str | `/api` | path every router is mounted under; `""` serves the root |
+| `api.ui_dir` | str | `dist/ui` | built SPA, relative to the project root; absent means API only |
+| `api.health_path` | str | `/health` | liveness endpoint of the platform health check |
 | `api.cors_origins` | list[str] | `[]` | allowed origins; empty disables CORS |
 | `logging.level` | str | `INFO` | `DEBUG`/`INFO`/`WARNING`/`ERROR` |
 | `logging.mode` | `stdout` \| `json` | `stdout` | line format |
@@ -37,6 +40,11 @@ request.
 | `logging.quiet` | list[str] | `uvicorn.access`, `httpx`, … | loggers silenced entirely |
 | `logging.loggers` | map[str, str] | `uvicorn: WARNING` | per-logger level, applied last |
 | `mcp.require_auth` | bool | `true` | transport authentication of `/mcp` |
+| `deploy.databricks.profile` | str | `""` | Databricks CLI profile of `etla deploy`; empty uses the SDK default |
+| `deploy.databricks.app_name` | str | `etlalchemy` | existing app the deployment targets |
+| `deploy.databricks.workspace_path` | str | `""` | folder the source is synced to; empty uses the caller's home |
+| `deploy.databricks.command` | list[str] | `uv run uvicorn …` | command written into the generated `app.yaml` |
+| `deploy.databricks.health_timeout_seconds` | int | `120` | how long the platform waits for `/health` |
 | `cipher_key` | base64 str | unset | encrypts event state at rest |
 
 `cipher_key` must decode to 16, 24 or 32 bytes; anything else is a validation

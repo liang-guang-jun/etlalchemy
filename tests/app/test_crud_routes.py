@@ -25,19 +25,19 @@ def wait_for(predicate: Callable[[], Any], timeout: float = WAIT_TIMEOUT) -> Non
 
 def create_tree(client: TestClient) -> str:
     """Creates a catalog, schema, table and field and waits for the read model."""
-    catalog_id = client.post("/catalog/catalogs", params={"name": "analytics"}).json()[
+    catalog_id = client.post("/api/catalog/catalogs", params={"name": "analytics"}).json()[
         "catalog_id"
     ]
     client.post(
-        f"/catalog/catalogs/{catalog_id}/schemas",
+        f"/api/catalog/catalogs/{catalog_id}/schemas",
         params={"schema_name": "sales", "description": "Sales data"},
     )
     client.post(
-        f"/catalog/catalogs/{catalog_id}/schemas/sales/tables",
+        f"/api/catalog/catalogs/{catalog_id}/schemas/sales/tables",
         params={"table_name": "orders"},
     )
     client.post(
-        f"/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders/fields",
+        f"/api/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders/fields",
         params={"field_name": "id", "data_type": "integer", "nullable": False},
     )
     wait_for(lambda: searches(client, "id"))
@@ -46,7 +46,7 @@ def create_tree(client: TestClient) -> str:
 
 def searches(client: TestClient, term: str) -> list[dict[str, Any]]:
     """Returns the search results for a term."""
-    return client.get("/catalog/search", params={"term": term}).json()
+    return client.get("/api/catalog/search", params={"term": term}).json()
 
 
 def first_search(client: TestClient, term: str) -> dict[str, Any]:
@@ -59,7 +59,7 @@ def schema_names(client: TestClient, catalog_id: str) -> list[str]:
     """Returns the schema names the read model lists for a catalog."""
     return [
         row["name"]
-        for row in client.get(f"/catalog/catalogs/{catalog_id}/schemas").json()
+        for row in client.get(f"/api/catalog/catalogs/{catalog_id}/schemas").json()
     ]
 
 
@@ -69,28 +69,28 @@ def test_patch_and_delete_routes_update_the_read_model(config_dir: Path) -> None
         catalog_id = create_tree(client)
 
         renamed = client.patch(
-            f"/catalog/catalogs/{catalog_id}",
+            f"/api/catalog/catalogs/{catalog_id}",
             json={"name": "warehouse", "description": "Warehouse catalog"},
         )
         assert renamed.status_code == 200
         wait_for(
-            lambda: client.get(f"/catalog/catalogs/{catalog_id}").json().get("name")
+            lambda: client.get(f"/api/catalog/catalogs/{catalog_id}").json().get("name")
             == "warehouse"
         )
-        catalog = client.get(f"/catalog/catalogs/{catalog_id}").json()
+        catalog = client.get(f"/api/catalog/catalogs/{catalog_id}").json()
         assert catalog["description"] == "Warehouse catalog"
 
         schema = client.patch(
-            f"/catalog/catalogs/{catalog_id}/schemas/sales",
+            f"/api/catalog/catalogs/{catalog_id}/schemas/sales",
             json={"name": "revenue", "description": "Revenue data"},
         )
         assert schema.status_code == 200
         wait_for(lambda: schema_names(client, catalog_id) == ["revenue"])
-        schemas = client.get(f"/catalog/catalogs/{catalog_id}/schemas").json()
+        schemas = client.get(f"/api/catalog/catalogs/{catalog_id}/schemas").json()
         assert schemas[0]["description"] == "Revenue data"
 
         table = client.patch(
-            f"/catalog/catalogs/{catalog_id}/schemas/revenue/tables/orders",
+            f"/api/catalog/catalogs/{catalog_id}/schemas/revenue/tables/orders",
             json={"name": "purchases"},
         )
         assert table.status_code == 200
@@ -99,14 +99,14 @@ def test_patch_and_delete_routes_update_the_read_model(config_dir: Path) -> None
         )
 
         field = client.patch(
-            f"/catalog/catalogs/{catalog_id}/schemas/revenue/tables/purchases/fields/id",
+            f"/api/catalog/catalogs/{catalog_id}/schemas/revenue/tables/purchases/fields/id",
             json={"data_type": "bigint"},
         )
         assert field.status_code == 200
         wait_for(lambda: first_search(client, "id").get("data_type") == "bigint")
 
         renamed_field = client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas/revenue/tables/purchases"
+            f"/api/catalog/catalogs/{catalog_id}/schemas/revenue/tables/purchases"
             "/fields/id/rename",
             json={"new_name": "order_id"},
         )
@@ -117,7 +117,7 @@ def test_patch_and_delete_routes_update_the_read_model(config_dir: Path) -> None
         assert first_search(client, "order_id")["data_type"] == "bigint"
 
         removed = client.delete(
-            f"/catalog/catalogs/{catalog_id}/schemas/revenue/tables/purchases/fields/order_id"
+            f"/api/catalog/catalogs/{catalog_id}/schemas/revenue/tables/purchases/fields/order_id"
         )
         assert removed.status_code == 204
         assert removed.content == b""
@@ -129,12 +129,12 @@ def test_delete_discards_a_catalog_and_hides_it(config_dir: Path) -> None:
     with TestClient(create_app()) as client:
         catalog_id = create_tree(client)
 
-        discarded = client.delete(f"/catalog/catalogs/{catalog_id}")
+        discarded = client.delete(f"/api/catalog/catalogs/{catalog_id}")
         assert discarded.status_code == 204
         assert discarded.content == b""
 
-        wait_for(lambda: client.get(f"/catalog/catalogs/{catalog_id}").status_code == 404)
-        wait_for(lambda: client.get("/catalog/catalogs").json() == [])
+        wait_for(lambda: client.get(f"/api/catalog/catalogs/{catalog_id}").status_code == 404)
+        wait_for(lambda: client.get("/api/catalog/catalogs").json() == [])
         wait_for(lambda: schema_names(client, catalog_id) == [])
         wait_for(lambda: searches(client, "id") == [])
 
@@ -144,14 +144,14 @@ def test_delete_discards_a_schema_and_a_table(config_dir: Path) -> None:
     with TestClient(create_app()) as client:
         catalog_id = create_tree(client)
 
-        table = client.delete(f"/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders")
+        table = client.delete(f"/api/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders")
         assert table.status_code == 204
-        schema = client.delete(f"/catalog/catalogs/{catalog_id}/schemas/sales")
+        schema = client.delete(f"/api/catalog/catalogs/{catalog_id}/schemas/sales")
         assert schema.status_code == 204
 
         wait_for(lambda: schema_names(client, catalog_id) == [])
         wait_for(lambda: searches(client, "id") == [])
-        assert client.get(f"/catalog/catalogs/{catalog_id}").status_code == 200
+        assert client.get(f"/api/catalog/catalogs/{catalog_id}").status_code == 200
 
 
 def test_empty_patch_is_rejected(config_dir: Path) -> None:
@@ -159,7 +159,7 @@ def test_empty_patch_is_rejected(config_dir: Path) -> None:
     with TestClient(create_app()) as client:
         catalog_id = create_tree(client)
 
-        empty = client.patch(f"/catalog/catalogs/{catalog_id}", json={})
+        empty = client.patch(f"/api/catalog/catalogs/{catalog_id}", json={})
 
         assert empty.status_code == 400
         assert "name or description" in empty.json()["detail"]
@@ -169,10 +169,10 @@ def test_discarded_aggregates_reject_further_changes(config_dir: Path) -> None:
     """Changing a discarded catalog returns a conflict."""
     with TestClient(create_app()) as client:
         catalog_id = create_tree(client)
-        assert client.delete(f"/catalog/catalogs/{catalog_id}").status_code == 204
+        assert client.delete(f"/api/catalog/catalogs/{catalog_id}").status_code == 204
 
         rejected = client.patch(
-            f"/catalog/catalogs/{catalog_id}",
+            f"/api/catalog/catalogs/{catalog_id}",
             json={"name": "warehouse"},
         )
 
@@ -183,31 +183,31 @@ def test_discarded_aggregates_reject_further_changes(config_dir: Path) -> None:
 def test_deleting_an_unknown_aggregate_returns_404(config_dir: Path) -> None:
     """Discarding an aggregate that does not exist returns not found."""
     with TestClient(create_app()) as client:
-        assert client.delete(f"/catalog/catalogs/{uuid4()}").status_code == 404
-        missing_schema = client.delete(f"/catalog/catalogs/{uuid4()}/schemas/sales")
+        assert client.delete(f"/api/catalog/catalogs/{uuid4()}").status_code == 404
+        missing_schema = client.delete(f"/api/catalog/catalogs/{uuid4()}/schemas/sales")
         assert missing_schema.status_code == 404
 
 
 def test_children_can_be_addressed_by_id(config_dir: Path) -> None:
     """The ids the create routes return also address the child resources."""
     with TestClient(create_app()) as client:
-        catalog_id = client.post("/catalog/catalogs", params={"name": "analytics"}).json()[
+        catalog_id = client.post("/api/catalog/catalogs", params={"name": "analytics"}).json()[
             "catalog_id"
         ]
         schema_id = client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas",
+            f"/api/catalog/catalogs/{catalog_id}/schemas",
             params={"schema_name": "sales"},
         ).json()["schema_id"]
 
         created = client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas/{schema_id}/tables",
+            f"/api/catalog/catalogs/{catalog_id}/schemas/{schema_id}/tables",
             params={"table_name": "test_table"},
         )
         assert created.status_code == 200
         table_id = created.json()["table_id"]
 
         field = client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas/{schema_id}/tables/{table_id}/fields",
+            f"/api/catalog/catalogs/{catalog_id}/schemas/{schema_id}/tables/{table_id}/fields",
             params={"field_name": "id", "data_type": "integer"},
         )
         assert field.status_code == 200
@@ -220,12 +220,12 @@ def test_children_can_be_addressed_by_id(config_dir: Path) -> None:
 def test_unknown_ids_are_not_found(config_dir: Path) -> None:
     """An id that is not registered in the parent answers 404."""
     with TestClient(create_app()) as client:
-        catalog_id = client.post("/catalog/catalogs", params={"name": "analytics"}).json()[
+        catalog_id = client.post("/api/catalog/catalogs", params={"name": "analytics"}).json()[
             "catalog_id"
         ]
 
         missing = client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas/{uuid4()}/tables",
+            f"/api/catalog/catalogs/{catalog_id}/schemas/{uuid4()}/tables",
             params={"table_name": "test_table"},
         )
 

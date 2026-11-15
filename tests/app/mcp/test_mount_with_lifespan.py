@@ -43,17 +43,17 @@ async def test_unknown_paths_still_answer_404(config_dir: Path) -> None:
 async def test_http_routes_still_answer_next_to_the_mcp_mount(config_dir: Path) -> None:
     """Mounting the MCP app does not shadow the catalog routes."""
     with TestClient(create_app()) as client:
-        assert client.get("/catalog/catalogs").status_code == 200
-        created = client.post("/catalog/catalogs", params={"name": "analytics"})
+        assert client.get("/api/catalog/catalogs").status_code == 200
+        created = client.post("/api/catalog/catalogs", params={"name": "analytics"})
         assert created.status_code == 200
 
 
 async def test_combined_lifespan_keeps_the_projection_running(config_dir: Path) -> None:
     """Both lifespans run: the container is wired and the projection advances."""
     with TestClient(create_app()) as client:
-        catalog_id = client.post("/catalog/catalogs", params={"name": "analytics"}).json()[
+        catalog_id = client.post("/api/catalog/catalogs", params={"name": "analytics"}).json()[
             "catalog_id"
         ]
 
-        wait_for(lambda: client.get(f"/catalog/catalogs/{catalog_id}").status_code == 200)
-        assert client.get(f"/catalog/catalogs/{catalog_id}").json()["name"] == "analytics"
+        wait_for(lambda: client.get(f"/api/catalog/catalogs/{catalog_id}").status_code == 200)
+        assert client.get(f"/api/catalog/catalogs/{catalog_id}").json()["name"] == "analytics"

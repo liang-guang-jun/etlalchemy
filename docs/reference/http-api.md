@@ -18,13 +18,22 @@ and comments.
 
 | Prefix | Router module | Token required |
 |---|---|---|
-| `/catalog` | `app/api/routes/catalog.py` | no |
-| `/semantic` | `app/api/routes/semantic.py` | no |
-| `/vocabulary` | `app/api/routes/vocabulary.py` | no |
-| `/comments` | `app/api/routes/comment.py` | yes |
-| `/ingestion`, `/iam`, `/agent` | see [Platform API](platform-api.md) | `/iam`, `/agent`: yes |
+| `/api/catalog` | `app/api/routes/catalog.py` | no |
+| `/api/semantic` | `app/api/routes/semantic.py` | no |
+| `/api/vocabulary` | `app/api/routes/vocabulary.py` | no |
+| `/api/comments` | `app/api/routes/comment.py` | yes |
+| `/api/ingestion`, `/api/iam`, `/api/agent` | see [Platform API](platform-api.md) | `/api/iam`, `/api/agent`: yes |
 
-OpenAPI is served at `/openapi.json` and Swagger UI at `/docs`.
+OpenAPI is served at `/openapi.json` and Swagger UI at `/docs`; the password flow
+they advertise points at `/api/iam/auth/token`.
+
+**One prefix, one origin.** Every router is mounted below `api.prefix`
+(`/api` by default), so a client route such as `/iam/users` can never collide
+with an API path and the browser can call the API with a relative URL. The
+production SPA in `dist/ui` is served by the same process, with `index.html` as
+the fallback for a client-side route and `GET /health` as the liveness probe;
+the fallback never answers a path below the prefix, `/mcp`, `/docs` or
+`/openapi.json`.
 
 **Name or id.** `{schema}` and `{table}` accept the registry name *or* the
 `UUID`. A lookup tries the name first, then the id, and rejects an id that
@@ -38,11 +47,11 @@ to children; the name may be reused afterwards.
 
 ```mermaid
 flowchart LR
-    cat["/catalog/catalogs"] --> sch["…/{catalog_id}/schemas"]
+    cat["/api/catalog/catalogs"] --> sch["…/{catalog_id}/schemas"]
     sch --> tab["…/schemas/{schema}/tables"]
     tab --> fld["…/tables/{table}/fields"]
-    tab -.->|"by id"| loc["/catalog/tables/{table_id}"]
-    loc -.->|"fields"| locf["/catalog/tables/{table_id}/fields"]
+    tab -.->|"by id"| loc["/api/catalog/tables/{table_id}"]
+    loc -.->|"fields"| locf["/api/catalog/tables/{table_id}/fields"]
 ```
 
 *Figure 1: One nesting chain plus two shortcut routes. `{schema}` and `{table}` accept a name or an id; the shortcut routes exist because a semantic entity stores only a table id.*
@@ -63,16 +72,16 @@ concurrency: retry the command after reloading the aggregate.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/catalog/catalogs?name=&description=` | create a catalog |
-| `GET` | `/catalog/catalogs` | list catalogs |
-| `GET` | `/catalog/catalogs/{catalog_id}` | one catalog |
-| `PATCH` | `/catalog/catalogs/{catalog_id}` | change name or description |
-| `DELETE` | `/catalog/catalogs/{catalog_id}` | discard a catalog |
-| `POST` | `/catalog/catalogs/{catalog_id}/schemas?schema_name=&description=` | create a schema |
-| `GET` | `/catalog/catalogs/{catalog_id}/schemas` | list schemas |
-| `GET` | `/catalog/catalogs/{catalog_id}/schemas/{schema}` | one schema |
-| `PATCH` | `/catalog/catalogs/{catalog_id}/schemas/{schema}` | change name or description |
-| `DELETE` | `/catalog/catalogs/{catalog_id}/schemas/{schema}` | discard a schema |
+| `POST` | `/api/catalog/catalogs?name=&description=` | create a catalog |
+| `GET` | `/api/catalog/catalogs` | list catalogs |
+| `GET` | `/api/catalog/catalogs/{catalog_id}` | one catalog |
+| `PATCH` | `/api/catalog/catalogs/{catalog_id}` | change name or description |
+| `DELETE` | `/api/catalog/catalogs/{catalog_id}` | discard a catalog |
+| `POST` | `/api/catalog/catalogs/{catalog_id}/schemas?schema_name=&description=` | create a schema |
+| `GET` | `/api/catalog/catalogs/{catalog_id}/schemas` | list schemas |
+| `GET` | `/api/catalog/catalogs/{catalog_id}/schemas/{schema}` | one schema |
+| `PATCH` | `/api/catalog/catalogs/{catalog_id}/schemas/{schema}` | change name or description |
+| `DELETE` | `/api/catalog/catalogs/{catalog_id}/schemas/{schema}` | discard a schema |
 | `POST` | `…/schemas/{schema}/tables?table_name=` | create a table |
 | `GET` | `…/schemas/{schema}/tables` | list tables |
 | `GET` | `…/schemas/{schema}/tables/{table}` | one table |
@@ -83,10 +92,10 @@ concurrency: retry the command after reloading the aggregate.
 | `PATCH` | `…/tables/{table}/fields/{field_name}` | change type, nullability or comment |
 | `DELETE` | `…/tables/{table}/fields/{field_name}` | remove a field |
 | `POST` | `…/fields/{field_name}/rename?new_name=` | rename a field |
-| `GET` | `/catalog/tables/{table_id}` | a table plus its schema and catalog names |
-| `GET` | `/catalog/tables/{table_id}/fields` | a table's fields, addressed by id |
-| `GET` | `/catalog/search?term=` | search fields |
-| `GET` | `/catalog/search-objects?term=` | search catalogs, schemas, tables, fields |
+| `GET` | `/api/catalog/tables/{table_id}` | a table plus its schema and catalog names |
+| `GET` | `/api/catalog/tables/{table_id}/fields` | a table's fields, addressed by id |
+| `GET` | `/api/catalog/search?term=` | search fields |
+| `GET` | `/api/catalog/search-objects?term=` | search catalogs, schemas, tables, fields |
 
 `data_type` is normalised (`VARCHAR(255)` → `varchar(255)`); an unknown or
 wrongly parameterised type is a `400`. A field carries a `comment`; an empty
@@ -98,26 +107,26 @@ A model is one aggregate: entities, relationships, diagrams and node positions.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/semantic/models` | create a model (also seeds the `All` diagram) |
-| `GET` | `/semantic/models` | list models |
-| `GET` | `/semantic/models/{model_id}` | one model |
-| `PATCH` | `/semantic/models/{model_id}` | rename or describe |
-| `DELETE` | `/semantic/models/{model_id}` | discard |
-| `POST` | `/semantic/models/{model_id}/entities` | add an entity for a catalog table |
-| `GET` | `/semantic/models/{model_id}/entities` | list entities |
-| `GET` | `/semantic/models/{model_id}/entities/{entity_name}` | one entity |
-| `PATCH` | `/semantic/models/{model_id}/entities/{entity_name}` | rename or re-point |
-| `DELETE` | `/semantic/models/{model_id}/entities/{entity_name}` | remove (cascades) |
-| `POST` | `/semantic/models/{model_id}/relationships` | add a relationship |
-| `GET` | `/semantic/models/{model_id}/relationships` | list relationships |
-| `GET` | `/semantic/models/{model_id}/relationships/{relationship_id}` | one relationship |
-| `PATCH` | `/semantic/models/{model_id}/relationships/{relationship_id}` | change it |
-| `DELETE` | `/semantic/models/{model_id}/relationships/{relationship_id}` | remove it |
-| `POST` | `/semantic/models/{model_id}/diagrams` | add a diagram |
-| `GET` | `/semantic/models/{model_id}/diagrams` | list diagrams |
-| `GET` | `/semantic/models/{model_id}/diagrams/{name}` | one diagram |
-| `PATCH` | `/semantic/models/{model_id}/diagrams/{name}` | rename it |
-| `DELETE` | `/semantic/models/{model_id}/diagrams/{name}` | remove it (not `All`) |
+| `POST` | `/api/semantic/models` | create a model (also seeds the `All` diagram) |
+| `GET` | `/api/semantic/models` | list models |
+| `GET` | `/api/semantic/models/{model_id}` | one model |
+| `PATCH` | `/api/semantic/models/{model_id}` | rename or describe |
+| `DELETE` | `/api/semantic/models/{model_id}` | discard |
+| `POST` | `/api/semantic/models/{model_id}/entities` | add an entity for a catalog table |
+| `GET` | `/api/semantic/models/{model_id}/entities` | list entities |
+| `GET` | `/api/semantic/models/{model_id}/entities/{entity_name}` | one entity |
+| `PATCH` | `/api/semantic/models/{model_id}/entities/{entity_name}` | rename or re-point |
+| `DELETE` | `/api/semantic/models/{model_id}/entities/{entity_name}` | remove (cascades) |
+| `POST` | `/api/semantic/models/{model_id}/relationships` | add a relationship |
+| `GET` | `/api/semantic/models/{model_id}/relationships` | list relationships |
+| `GET` | `/api/semantic/models/{model_id}/relationships/{relationship_id}` | one relationship |
+| `PATCH` | `/api/semantic/models/{model_id}/relationships/{relationship_id}` | change it |
+| `DELETE` | `/api/semantic/models/{model_id}/relationships/{relationship_id}` | remove it |
+| `POST` | `/api/semantic/models/{model_id}/diagrams` | add a diagram |
+| `GET` | `/api/semantic/models/{model_id}/diagrams` | list diagrams |
+| `GET` | `/api/semantic/models/{model_id}/diagrams/{name}` | one diagram |
+| `PATCH` | `/api/semantic/models/{model_id}/diagrams/{name}` | rename it |
+| `DELETE` | `/api/semantic/models/{model_id}/diagrams/{name}` | remove it (not `All`) |
 | `POST` | `…/diagrams/{name}/nodes` | place an entity on a diagram |
 | `GET` | `…/diagrams/{name}/nodes` | list nodes |
 | `PATCH` | `…/diagrams/{name}/nodes/{entity_name}` | move a node |
@@ -136,14 +145,14 @@ Terms form a tree per domain, addressed by **id** in the URL (a path contains
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/vocabulary/domains` | create a domain |
-| `GET` | `/vocabulary/domains` | list domains |
-| `GET` | `/vocabulary/domains/{domain_id}` | one domain |
-| `PATCH` | `/vocabulary/domains/{domain_id}` | rename or describe |
-| `DELETE` | `/vocabulary/domains/{domain_id}` | discard with all terms |
-| `POST` | `/vocabulary/domains/{domain_id}/terms` | create a term |
-| `GET` | `/vocabulary/domains/{domain_id}/terms` | list the live tree |
-| `GET` | `/vocabulary/domains/{domain_id}/children` | children of one term |
+| `POST` | `/api/vocabulary/domains` | create a domain |
+| `GET` | `/api/vocabulary/domains` | list domains |
+| `GET` | `/api/vocabulary/domains/{domain_id}` | one domain |
+| `PATCH` | `/api/vocabulary/domains/{domain_id}` | rename or describe |
+| `DELETE` | `/api/vocabulary/domains/{domain_id}` | discard with all terms |
+| `POST` | `/api/vocabulary/domains/{domain_id}/terms` | create a term |
+| `GET` | `/api/vocabulary/domains/{domain_id}/terms` | list the live tree |
+| `GET` | `/api/vocabulary/domains/{domain_id}/children` | children of one term |
 | `GET` | `…/terms/{term_id}` | one term |
 | `PATCH` | `…/terms/{term_id}` | change definition, colour, aliases |
 | `POST` | `…/terms/{term_id}/move` | reparent (and repath the subtree) |
@@ -155,10 +164,10 @@ Terms form a tree per domain, addressed by **id** in the URL (a path contains
 | `POST` | `…/terms/{term_id}/links` | link to a catalog or semantic object |
 | `DELETE` | `…/terms/{term_id}/links` | remove a link |
 | `GET` | `…/terms/{term_id}/descendants` | the subtree |
-| `GET` | `/vocabulary/terms-for-target` | terms that link to an object |
-| `GET` | `/vocabulary/terms-for-table` | terms that link to a table |
-| `GET` | `/vocabulary/terms-for-field` | terms that link to a column |
-| `GET` | `/vocabulary/search?term=` | search terms |
+| `GET` | `/api/vocabulary/terms-for-target` | terms that link to an object |
+| `GET` | `/api/vocabulary/terms-for-table` | terms that link to a table |
+| `GET` | `/api/vocabulary/terms-for-field` | terms that link to a column |
+| `GET` | `/api/vocabulary/search?term=` | search terms |
 
 A name may not be blank or contain `/`; a move that would create a cycle is a
 `409`. Colour is metadata: `#abc` is expanded and lowercased, and a malformed
@@ -171,18 +180,18 @@ token.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/comments/threads` | open a thread with a first comment |
-| `GET` | `/comments/threads?target_type=&target_id=` | list threads |
-| `GET` | `/comments/threads/{thread_id}` | one thread with its comments |
-| `GET` | `/comments/threads/{thread_id}/comments` | paged comments |
-| `POST` | `/comments/threads/{thread_id}/comments` | reply |
-| `PATCH` | `/comments/threads/{thread_id}/comments/{comment_id}` | edit |
-| `DELETE` | `/comments/threads/{thread_id}/comments/{comment_id}` | delete a comment |
-| `POST` | `/comments/threads/{thread_id}/resolve` | mark resolved |
-| `POST` | `/comments/threads/{thread_id}/reopen` | reopen |
-| `DELETE` | `/comments/threads/{thread_id}` | discard the thread |
-| `GET` | `/comments/targets/{target_type}/{target_id}` | resolve a target's name |
-| `POST` | `/comments/targets/lookup` | resolve several targets at once |
+| `POST` | `/api/comments/threads` | open a thread with a first comment |
+| `GET` | `/api/comments/threads?target_type=&target_id=` | list threads |
+| `GET` | `/api/comments/threads/{thread_id}` | one thread with its comments |
+| `GET` | `/api/comments/threads/{thread_id}/comments` | paged comments |
+| `POST` | `/api/comments/threads/{thread_id}/comments` | reply |
+| `PATCH` | `/api/comments/threads/{thread_id}/comments/{comment_id}` | edit |
+| `DELETE` | `/api/comments/threads/{thread_id}/comments/{comment_id}` | delete a comment |
+| `POST` | `/api/comments/threads/{thread_id}/resolve` | mark resolved |
+| `POST` | `/api/comments/threads/{thread_id}/reopen` | reopen |
+| `DELETE` | `/api/comments/threads/{thread_id}` | discard the thread |
+| `GET` | `/api/comments/targets/{target_type}/{target_id}` | resolve a target's name |
+| `POST` | `/api/comments/targets/lookup` | resolve several targets at once |
 
 Reads filter `author_tenant_id IS NULL OR = session tenant`. Comment depth is
 derived at read time, never stored, so an edited tree needs no migration.

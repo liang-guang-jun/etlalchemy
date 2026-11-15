@@ -62,11 +62,11 @@ tenant default → system default → first public provider**.
 ## 2. Start a conversation and ask
 
 ```bash
-CONV=$(curl -s -X POST http://localhost:8000/agent/conversations \
+CONV=$(curl -s -X POST http://localhost:8000/api/agent/conversations \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"title": "catalog review"}' | sed -n 's/.*"conversation_id":"\([^"]*\)".*/\1/p')
 
-curl -sN -X POST "http://localhost:8000/agent/conversations/$CONV/messages:stream" \
+curl -sN -X POST "http://localhost:8000/api/agent/conversations/$CONV/messages:stream" \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"content": "Which tables have no description?", "page_context": "Data catalog"}'
 ```
@@ -85,7 +85,7 @@ data: {"approval_id":"…","tool":"discard_table","args_hash":"…","reason":"�
 ```
 
 ```bash
-curl -sN -X POST "http://localhost:8000/agent/runs/$RUN/approvals/$APPROVAL:stream" \
+curl -sN -X POST "http://localhost:8000/api/agent/runs/$RUN/approvals/$APPROVAL:stream" \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"approved": true}'
 ```

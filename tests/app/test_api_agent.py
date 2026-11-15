@@ -52,14 +52,14 @@ def login(client: TestClient, email: str) -> dict[str, str]:
     """Authenticates and returns the bearer headers."""
     body = {"login": email, "password": PASSWORD}
     deadline = time.monotonic() + WAIT_TIMEOUT
-    response = client.post("/iam/auth/password", json=body)
+    response = client.post("/api/iam/auth/password", json=body)
     while response.status_code != 200 and time.monotonic() < deadline:
         time.sleep(0.05)
-        response = client.post("/iam/auth/password", json=body)
+        response = client.post("/api/iam/auth/password", json=body)
     assert response.status_code == 200, response.text
     headers = {"Authorization": f"Bearer {response.json()['access_token']}"}
     wait_for(
-        lambda: client.get("/iam/sessions/current", headers=headers).status_code == 200,
+        lambda: client.get("/api/iam/sessions/current", headers=headers).status_code == 200,
     )
     return headers
 
@@ -72,7 +72,7 @@ def test_provider_and_conversation_lifecycle(config_dir: Any) -> None:
         headers = login(client, "root@example.com")
 
         created = client.post(
-            "/agent/llm-providers",
+            "/api/agent/llm-providers",
             headers=headers,
             json={
                 "name": "my-openai",
@@ -85,24 +85,24 @@ def test_provider_and_conversation_lifecycle(config_dir: Any) -> None:
         provider_id = created.json()["provider_id"]
 
         listed = wait_for(
-            lambda: client.get("/agent/llm-providers", headers=headers).json(),
+            lambda: client.get("/api/agent/llm-providers", headers=headers).json(),
         )
         assert [row["provider_id"] for row in listed] == [provider_id]
 
-        fetched = client.get(f"/agent/llm-providers/{provider_id}", headers=headers)
+        fetched = client.get(f"/api/agent/llm-providers/{provider_id}", headers=headers)
         assert fetched.status_code == 200
         assert fetched.json()["credential_ref"] == "env:OPENAI_API_KEY"
         assert "token" not in fetched.json()
 
         renamed = client.patch(
-            f"/agent/llm-providers/{provider_id}",
+            f"/api/agent/llm-providers/{provider_id}",
             headers=headers,
             json={"name": "renamed"},
         )
         assert renamed.status_code == 200
 
         conversation = client.post(
-            "/agent/conversations",
+            "/api/agent/conversations",
             headers=headers,
             json={"title": "pricing"},
         )
@@ -110,12 +110,12 @@ def test_provider_and_conversation_lifecycle(config_dir: Any) -> None:
         conversation_id = conversation.json()["conversation_id"]
 
         listed_conversations = wait_for(
-            lambda: client.get("/agent/conversations", headers=headers).json(),
+            lambda: client.get("/api/agent/conversations", headers=headers).json(),
         )
         assert [row["conversation_id"] for row in listed_conversations] == [conversation_id]
 
         messages = client.get(
-            f"/agent/conversations/{conversation_id}/messages",
+            f"/api/agent/conversations/{conversation_id}/messages",
             headers=headers,
         )
         assert messages.status_code == 200
@@ -123,14 +123,14 @@ def test_provider_and_conversation_lifecycle(config_dir: Any) -> None:
 
         assert (
             client.delete(
-                f"/agent/conversations/{conversation_id}",
+                f"/api/agent/conversations/{conversation_id}",
                 headers=headers,
             ).status_code
             == 204
         )
         assert (
             client.delete(
-                f"/agent/llm-providers/{provider_id}",
+                f"/api/agent/llm-providers/{provider_id}",
                 headers=headers,
             ).status_code
             == 204
@@ -142,5 +142,5 @@ def test_agent_routes_require_a_token(config_dir: Any) -> None:
     seed_admin("root@example.com")
 
     with TestClient(create_app()) as client:
-        assert client.get("/agent/llm-providers").status_code == 401
-        assert client.get("/agent/conversations").status_code == 401
+        assert client.get("/api/agent/llm-providers").status_code == 401
+        assert client.get("/api/agent/conversations").status_code == 401

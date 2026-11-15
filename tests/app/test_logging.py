@@ -65,7 +65,7 @@ def test_run_container_configures_logging_first(
 def test_request_id_is_generated_and_echoed(config_dir: Path) -> None:
     """A request without the header gets a generated id in the response."""
     with TestClient(create_app()) as client:
-        response = client.get("/catalog/catalogs")
+        response = client.get("/api/catalog/catalogs")
 
     assert response.status_code == 200
     assert response.headers["X-Request-ID"]
@@ -74,7 +74,7 @@ def test_request_id_is_generated_and_echoed(config_dir: Path) -> None:
 def test_caller_request_id_is_preserved(config_dir: Path) -> None:
     """The caller's request id travels back unchanged."""
     with TestClient(create_app()) as client:
-        response = client.get("/catalog/catalogs", headers={"X-Request-ID": "abc-123"})
+        response = client.get("/api/catalog/catalogs", headers={"X-Request-ID": "abc-123"})
 
     assert response.headers["X-Request-ID"] == "abc-123"
 
@@ -82,8 +82,8 @@ def test_caller_request_id_is_preserved(config_dir: Path) -> None:
 def test_request_ids_differ_between_requests(config_dir: Path) -> None:
     """Every request gets its own id when the caller does not send one."""
     with TestClient(create_app()) as client:
-        first = client.get("/catalog/catalogs").headers["X-Request-ID"]
-        second = client.get("/catalog/catalogs").headers["X-Request-ID"]
+        first = client.get("/api/catalog/catalogs").headers["X-Request-ID"]
+        second = client.get("/api/catalog/catalogs").headers["X-Request-ID"]
 
     assert first != second
 
@@ -108,12 +108,12 @@ def test_read_requests_are_logged(config_dir: Path) -> None:
     with capture_logs(
         processors=[structlog.contextvars.merge_contextvars]
     ) as logs, TestClient(create_app()) as client:
-        assert client.get("/catalog/catalogs").status_code == 200
+        assert client.get("/api/catalog/catalogs").status_code == 200
 
     request = next(
         entry
         for entry in logs
-        if entry["event"] == "request" and entry["path"] == "/catalog/catalogs"
+        if entry["event"] == "request" and entry["path"] == "/api/catalog/catalogs"
     )
     assert request["method"] == "GET"
     assert request["status"] == 200
@@ -128,7 +128,7 @@ def test_write_requests_are_logged_too(config_dir: Path) -> None:
     with capture_logs(
         processors=[structlog.contextvars.merge_contextvars]
     ) as logs, TestClient(create_app()) as client:
-        assert client.post("/catalog/catalogs", params={"name": "analytics"}).status_code == 200
+        assert client.post("/api/catalog/catalogs", params={"name": "analytics"}).status_code == 200
 
     events = [entry["event"] for entry in logs]
     assert "catalog.create done" in events

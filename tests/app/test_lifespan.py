@@ -34,7 +34,7 @@ def test_lifespan_creates_the_read_model(config_dir: Path) -> None:
     sqlite_path = container.settings().database.sqlite_path
 
     with TestClient(app) as client:
-        assert client.get("/catalog/search", params={"term": "x"}).status_code == 200
+        assert client.get("/api/catalog/search", params={"term": "x"}).status_code == 200
 
     connection = sqlite3.connect(sqlite_path)
     try:

@@ -30,7 +30,7 @@ def wait_for(predicate: Callable[[], Any], timeout: float = WAIT_TIMEOUT) -> Any
 
 def run_or_none(client: TestClient, run_id: str) -> Any:
     """Returns one import run, or ``None`` while the projection catches up."""
-    response = client.get(f"/ingestion/runs/{run_id}")
+    response = client.get(f"/api/ingestion/runs/{run_id}")
     return response.json() if response.status_code == 200 else None
 
 
@@ -39,7 +39,7 @@ def test_connection_crud_roundtrip(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         created = client.post(
-            "/ingestion/connections",
+            "/api/ingestion/connections",
             json={
                 "name": "warehouse",
                 "kind": "databricks",
@@ -52,42 +52,42 @@ def test_connection_crud_roundtrip(config_dir: Path) -> None:
         assert created.status_code == 201
         connection_id = created.json()["connection_id"]
 
-        rows = wait_for(lambda: client.get("/ingestion/connections").json())
+        rows = wait_for(lambda: client.get("/api/ingestion/connections").json())
         assert [row["name"] for row in rows] == ["warehouse"]
         assert rows[0]["credential_ref"] == "env:DBX_TOKEN"
         assert rows[0]["has_inline_credential"] is False
         assert rows[0]["options"] == {"warehouse_id": "abc"}
 
-        fetched = client.get(f"/ingestion/connections/{connection_id}")
+        fetched = client.get(f"/api/ingestion/connections/{connection_id}")
         assert fetched.status_code == 200
         assert fetched.json()["default_catalog"] == "main"
 
         patched = client.patch(
-            f"/ingestion/connections/{connection_id}",
+            f"/api/ingestion/connections/{connection_id}",
             json={"name": "renamed"},
         )
         assert patched.status_code == 200
         assert patched.json() == {"ok": True}
         wait_for(
-            lambda: client.get("/ingestion/connections").json()[0]["name"] == "renamed"
+            lambda: client.get("/api/ingestion/connections").json()[0]["name"] == "renamed"
         )
 
         rotated = client.post(
-            f"/ingestion/connections/{connection_id}/rotate",
+            f"/api/ingestion/connections/{connection_id}/rotate",
             json={"token": "s3cr3t"},
         )
         assert rotated.status_code == 200
         wait_for(
-            lambda: client.get(f"/ingestion/connections/{connection_id}").json()[
+            lambda: client.get(f"/api/ingestion/connections/{connection_id}").json()[
                 "has_inline_credential"
             ]
             is True
         )
 
-        deleted = client.delete(f"/ingestion/connections/{connection_id}")
+        deleted = client.delete(f"/api/ingestion/connections/{connection_id}")
         assert deleted.status_code == 204
-        wait_for(lambda: client.get("/ingestion/connections").json() == [])
-        assert client.get(f"/ingestion/connections/{connection_id}").status_code == 404
+        wait_for(lambda: client.get("/api/ingestion/connections").json() == [])
+        assert client.get(f"/api/ingestion/connections/{connection_id}").status_code == 404
 
 
 def test_duplicate_connection_name_is_a_conflict(config_dir: Path) -> None:
@@ -100,10 +100,10 @@ def test_duplicate_connection_name_is_a_conflict(config_dir: Path) -> None:
         "credential_ref": "env:DBX_TOKEN",
     }
     with TestClient(app) as client:
-        assert client.post("/ingestion/connections", json=body).status_code == 201
-        wait_for(lambda: client.get("/ingestion/connections").json())
+        assert client.post("/api/ingestion/connections", json=body).status_code == 201
+        wait_for(lambda: client.get("/api/ingestion/connections").json())
 
-        conflict = client.post("/ingestion/connections", json=body)
+        conflict = client.post("/api/ingestion/connections", json=body)
 
         assert conflict.status_code == 409
         assert "warehouse" in conflict.json()["detail"]
@@ -116,7 +116,7 @@ def test_unknown_kind_is_a_conflict_and_ambiguous_credential_is_rejected(
     app = create_app()
     with TestClient(app) as client:
         unknown = client.post(
-            "/ingestion/connections",
+            "/api/ingestion/connections",
             json={
                 "name": "warehouse",
                 "kind": "unknown",
@@ -128,7 +128,7 @@ def test_unknown_kind_is_a_conflict_and_ambiguous_credential_is_rejected(
         assert "unknown" in unknown.json()["detail"]
 
         ambiguous = client.post(
-            "/ingestion/connections",
+            "/api/ingestion/connections",
             json={
                 "name": "warehouse",
                 "kind": "databricks",
@@ -144,10 +144,10 @@ def test_runs_are_listed_and_missing_ones_are_not_found(config_dir: Path) -> Non
     """Import runs are readable from the read model."""
     app = create_app()
     with TestClient(app) as client:
-        assert client.get("/ingestion/runs").json() == []
-        assert client.get(f"/ingestion/runs/{uuid4()}").status_code == 404
+        assert client.get("/api/ingestion/runs").json() == []
+        assert client.get(f"/api/ingestion/runs/{uuid4()}").status_code == 404
         assert (
-            client.get("/ingestion/runs", params={"status": "failed"}).json() == []
+            client.get("/api/ingestion/runs", params={"status": "failed"}).json() == []
         )
 
 
@@ -156,7 +156,7 @@ def test_import_unknown_connection_is_not_found(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         response = client.post(
-            f"/ingestion/connections/{uuid4()}/import",
+            f"/api/ingestion/connections/{uuid4()}/import",
             json={"target_catalog_id": str(uuid4())},
         )
 
@@ -183,11 +183,11 @@ def test_import_endpoint_materialises_the_source(config_dir: Path) -> None:
 
     with TestClient(app) as client:
         catalog_id = client.post(
-            "/catalog/catalogs",
+            "/api/catalog/catalogs",
             params={"name": "target"},
         ).json()["catalog_id"]
         created = client.post(
-            "/ingestion/connections",
+            "/api/ingestion/connections",
             json={
                 "name": "fake-source",
                 "kind": "fake",
@@ -199,7 +199,7 @@ def test_import_endpoint_materialises_the_source(config_dir: Path) -> None:
         connection_id = created.json()["connection_id"]
 
         imported = client.post(
-            f"/ingestion/connections/{connection_id}/import",
+            f"/api/ingestion/connections/{connection_id}/import",
             json={
                 "target_catalog_id": catalog_id,
                 "source_catalog": "src",
@@ -225,7 +225,7 @@ def test_import_endpoint_materialises_the_source(config_dir: Path) -> None:
                 rows
                 if len(
                     rows := client.get(
-                        f"/catalog/catalogs/{catalog_id}/schemas/sales_raw/tables/orders/fields"
+                        f"/api/catalog/catalogs/{catalog_id}/schemas/sales_raw/tables/orders/fields"
                     ).json()
                 )
                 == 2
@@ -244,7 +244,7 @@ def test_source_kinds_are_listed(config_dir: Path) -> None:
     """The configured source factories are advertised for the create dialog."""
     app = create_app()
     with TestClient(app) as client:
-        response = client.get("/ingestion/source-kinds")
+        response = client.get("/api/ingestion/source-kinds")
 
         assert response.status_code == 200
         kinds = [row["kind"] for row in response.json()]
@@ -256,7 +256,7 @@ def test_a_profile_connection_omits_the_endpoint(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         created = client.post(
-            "/ingestion/connections",
+            "/api/ingestion/connections",
             json={
                 "name": "local",
                 "kind": "databricks",
@@ -265,7 +265,7 @@ def test_a_profile_connection_omits_the_endpoint(config_dir: Path) -> None:
         )
 
         assert created.status_code == 201
-        rows = wait_for(lambda: client.get("/ingestion/connections").json())
+        rows = wait_for(lambda: client.get("/api/ingestion/connections").json())
         assert rows[0]["credential_ref"] == "profile:team"
         assert rows[0]["endpoint"] == ""
 
@@ -281,18 +281,18 @@ def test_source_profiles_read_the_local_cli_config(
     )
     app = create_app()
     with TestClient(app) as client:
-        response = client.get("/ingestion/source-profiles", params={"kind": "databricks"})
+        response = client.get("/api/ingestion/source-profiles", params={"kind": "databricks"})
 
         assert response.status_code == 200
         assert response.json() == [{"name": "team", "host": "https://example.test"}]
-        unsupported = client.get("/ingestion/source-profiles", params={"kind": "postgres"})
+        unsupported = client.get("/api/ingestion/source-profiles", params={"kind": "postgres"})
         assert unsupported.status_code == 400
 
 
 def _fake_connection(client: TestClient) -> str:
     """Creates a connection backed by a fake source and returns its id."""
     created = client.post(
-        "/ingestion/connections",
+        "/api/ingestion/connections",
         json={
             "name": "fake-source",
             "kind": "fake",
@@ -331,7 +331,7 @@ def test_inspect_walks_every_source_level(config_dir: Path) -> None:
 
     with TestClient(app) as client:
         connection_id = _fake_connection(client)
-        base = f"/ingestion/connections/{connection_id}/inspect"
+        base = f"/api/ingestion/connections/{connection_id}/inspect"
 
         catalogs = client.get(base)
         assert catalogs.status_code == 200
@@ -358,7 +358,7 @@ def test_inspect_unknown_connection_is_not_found(config_dir: Path) -> None:
     """Inspecting a connection that does not exist answers 404."""
     app = create_app()
     with TestClient(app) as client:
-        response = client.get(f"/ingestion/connections/{uuid4()}/inspect")
+        response = client.get(f"/api/ingestion/connections/{uuid4()}/inspect")
 
         assert response.status_code == 404
 
@@ -372,13 +372,13 @@ def test_plan_previews_the_import_without_writing(config_dir: Path) -> None:
 
     with TestClient(app) as client:
         catalog_id = client.post(
-            "/catalog/catalogs",
+            "/api/catalog/catalogs",
             params={"name": "target"},
         ).json()["catalog_id"]
         connection_id = _fake_connection(client)
 
         planned = client.post(
-            f"/ingestion/connections/{connection_id}/plan",
+            f"/api/ingestion/connections/{connection_id}/plan",
             json={
                 "target_catalog_id": catalog_id,
                 "source_catalog": "src",
@@ -399,7 +399,7 @@ def test_plan_previews_the_import_without_writing(config_dir: Path) -> None:
                 "policy": "fail",
             }
         ]
-        assert client.get(f"/catalog/catalogs/{catalog_id}/schemas").json() == []
+        assert client.get(f"/api/catalog/catalogs/{catalog_id}/schemas").json() == []
 
 
 def test_connection_test_reports_a_failing_source(config_dir: Path) -> None:
@@ -414,7 +414,7 @@ def test_connection_test_reports_a_failing_source(config_dir: Path) -> None:
     with TestClient(app) as client:
         connection_id = _fake_connection(client)
 
-        response = client.post(f"/ingestion/connections/{connection_id}/test")
+        response = client.post(f"/api/ingestion/connections/{connection_id}/test")
 
         assert response.status_code == 200
         assert response.json()["ok"] is False

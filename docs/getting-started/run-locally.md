@@ -47,7 +47,7 @@ flowchart LR
     uvicorn --> life["run_container<br/>init_resources"]
     life --> tables["view.create_table()"]
     tables --> apps["application.start()<br/>per context"]
-    apps --> ready["/catalog … /mcp ready"]
+    apps --> ready["/api/catalog … /mcp ready"]
 ```
 
 *Figure 1: What happens between the command and the first request. Tables come before the applications start, because a projection must not miss an event that arrived while its table did not exist.*
@@ -59,7 +59,7 @@ means uvicorn never reached the lifespan.
 ## 4. Prove the API answers
 
 ```bash
-curl -s http://localhost:8000/catalog/catalogs
+curl -s http://localhost:8000/api/catalog/catalogs
 ```
 
 `[]` means the service is up and the read model is empty. The interactive schema

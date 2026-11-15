@@ -218,8 +218,17 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pyt
   .catalog_application()` only constructs the `AsyncApplication`.
 - Routes use `@inject` + `Depends(Provide[Container.<provider>])`; never construct a
   container inside a route.
+- Every router is mounted below `api.prefix` (default `/api`, `""` allowed), so the
+  browser calls `/api/...` relative to the page and a client route such as `/iam/users`
+  can never collide with an API path. `create_app` also answers `api.health_path`
+  (`/health`) and, when `api.ui_dir` holds an `index.html`, serves the built SPA from the
+  site root with a history fallback registered after the MCP routes; the fallback never
+  answers `{prefix}`, `/mcp`, `/docs`, `/redoc` or `/openapi.json`. The Swagger password
+  flow token URL follows the prefix (`configure_token_path`). The frontend axios client
+  uses `/api` as its `baseURL` (`apiUrl()` for the fetch-based SSE calls), so Vite only
+  proxies `/api` and `/mcp`.
 - Catalog writes are `POST`/`PATCH`/`DELETE`, addressed as
-  `/catalogs/{catalog_id}/schemas/{schema}/tables/{table}/fields/{field_name}` where
+  `/api/catalogs/{catalog_id}/schemas/{schema}/tables/{table}/fields/{field_name}` where
   `{schema}` and `{table}` are a name or an id. `PATCH` takes a pydantic body and an
   all-`None` body is a 400 raised by the aggregate, `DELETE` answers 204, and
   `DiscardedError` is mapped to 409 next to the duplicate errors. A table patch also
@@ -278,7 +287,27 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pyt
   only way to create the first system administrator, passwords are read from a hidden
   prompt (never an option), and protected commands take `--session` or `$IAM_SESSION`
   with exit code 3 when it is missing. The CLI raises the logging level to `WARNING`
-  so `--json` output stays parseable.
+  so `--json` output stays parseable. `etla deploy --databricks-apps --profile <p>`
+  publishes the service (see _Deployment_).
+
+## Deployment
+
+- `etlalchemy/app/deploy/` is assembly-layer tooling, not a bounded context:
+  `auth.py` resolves a CLI profile through `databricks-sdk` (lazy import, `authenticate()`
+  headers), `workspace.py` is the async `httpx` client of the workspace and apps REST
+  APIs, `snapshot.py` holds the SHA-256 snapshot, the `.etlalchemy-deploy.json` manifest
+  and `plan_changes`, `staging.py` builds the uploaded tree and the generated
+  `app.yaml`, and `runner.py` orchestrates it with `rich`. `etlalchemy/app/cli/deploy.py`
+  is only option parsing and error mapping; `DeployOptions` carries everything.
+- The upload is incremental: the digest manifest is the source of truth, the size is
+  only a fallback for a folder without one, and `--force` bypasses both. The command
+  never creates the app (`databricks apps create`) and never writes before `--yes` or
+  an interactive confirmation.
+- The staged tree carries `etlalchemy/`, `dist/ui/`, `pyproject.toml` (with
+  `[tool.uv] default-groups = []`), `uv.lock`, `README.md`, `LICENSE`, the configuration
+  files and `app.yaml`; the platform runs `uv sync` and then `uv run uvicorn
+  etlalchemy.app.main:app --port $DATABRICKS_APP_PORT`. Never ship `package.json`: the
+  SPA is prebuilt.
 
 ## MCP server
 

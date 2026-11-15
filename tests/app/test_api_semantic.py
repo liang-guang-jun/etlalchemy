@@ -27,12 +27,12 @@ def wait_for(predicate: Callable[[], Any], timeout: float = WAIT_TIMEOUT) -> Any
 
 def create_catalog(client: TestClient) -> dict[str, str]:
     """Creates a catalog with the customers and orders tables."""
-    catalog = client.post("/catalog/catalogs", params={"name": "analytics"})
+    catalog = client.post("/api/catalog/catalogs", params={"name": "analytics"})
     assert catalog.status_code == 200
     catalog_id = catalog.json()["catalog_id"]
     assert (
         client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas",
+            f"/api/catalog/catalogs/{catalog_id}/schemas",
             params={"schema_name": "sales"},
         ).status_code
         == 200
@@ -43,12 +43,12 @@ def create_catalog(client: TestClient) -> dict[str, str]:
         ("orders", ("id", "customer_id")),
     ):
         table = client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas/sales/tables",
+            f"/api/catalog/catalogs/{catalog_id}/schemas/sales/tables",
             params={"table_name": table_name},
         )
         assert table.status_code == 200
         tables[table_name] = table.json()["table_id"]
-        fields_url = f"/catalog/catalogs/{catalog_id}/schemas/sales/tables/{table_name}/fields"
+        fields_url = f"/api/catalog/catalogs/{catalog_id}/schemas/sales/tables/{table_name}/fields"
         for field_name in fields:
             assert (
                 client.post(
@@ -73,10 +73,10 @@ def create_catalog(client: TestClient) -> dict[str, str]:
 def create_model(client: TestClient) -> tuple[str, dict[str, str]]:
     """Creates a model with the customers and orders entities."""
     tables = create_catalog(client)
-    model = client.post("/semantic/models", json={"name": "sales", "description": "Revenue"})
+    model = client.post("/api/semantic/models", json={"name": "sales", "description": "Revenue"})
     assert model.status_code == 201
     model_id = model.json()["model_id"]
-    base = f"/semantic/models/{model_id}"
+    base = f"/api/semantic/models/{model_id}"
     for name in ("customers", "orders"):
         created = client.post(
             f"{base}/entities",
@@ -96,7 +96,7 @@ def create_model(client: TestClient) -> tuple[str, dict[str, str]]:
 def add_relationship(client: TestClient, model_id: str) -> str:
     """Adds the customers.id -> orders.customer_id relationship."""
     response = client.post(
-        f"/semantic/models/{model_id}/relationships",
+        f"/api/semantic/models/{model_id}/relationships",
         json={
             "from_refs": [{"entity": "customers", "field": "id"}],
             "to_refs": [{"entity": "orders", "field": "customer_id"}],
@@ -115,7 +115,7 @@ def test_model_roundtrip(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         model_id, tables = create_model(client)
-        base = f"/semantic/models/{model_id}"
+        base = f"/api/semantic/models/{model_id}"
         relationship_id = add_relationship(client, model_id)
         assert client.post(f"{base}/diagrams", json={"name": "detail", "order": 1}).status_code == 201
         node = client.post(f"{base}/diagrams/detail/nodes", json={"entity_name": "orders"})
@@ -123,7 +123,7 @@ def test_model_roundtrip(config_dir: Path) -> None:
         assert node.json()["diagram_name"] == "detail"
 
         assert client.get(f"{base}").json()["name"] == "sales"
-        assert [row["name"] for row in client.get("/semantic/models").json()] == ["sales"]
+        assert [row["name"] for row in client.get("/api/semantic/models").json()] == ["sales"]
         entity = client.get(f"{base}/entities/customers")
         assert entity.status_code == 200
         assert entity.json()["table_id"] == tables["customers"]
@@ -176,7 +176,7 @@ def test_the_all_diagram_rejects_manual_nodes(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         model_id, _ = create_model(client)
-        base = f"/semantic/models/{model_id}"
+        base = f"/api/semantic/models/{model_id}"
 
         created = client.post(f"{base}/diagrams/All/nodes", json={"entity_name": "orders"})
         removed = client.delete(f"{base}/diagrams/All/nodes/orders")
@@ -195,10 +195,10 @@ def test_unknown_references_answer_404(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         model_id, _ = create_model(client)
-        base = f"/semantic/models/{model_id}"
+        base = f"/api/semantic/models/{model_id}"
         missing = "00000000-0000-0000-0000-000000000000"
 
-        assert client.get(f"/semantic/models/{missing}").status_code == 404
+        assert client.get(f"/api/semantic/models/{missing}").status_code == 404
         assert client.get(f"{base}/entities/ghosts").status_code == 404
         assert client.get(f"{base}/diagrams/missing").status_code == 404
         assert client.get(f"{base}/relationships/{missing}").status_code == 404
@@ -209,7 +209,7 @@ def test_a_discarded_model_hides_its_children(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         model_id, _ = create_model(client)
-        base = f"/semantic/models/{model_id}"
+        base = f"/api/semantic/models/{model_id}"
 
         assert client.delete(base).status_code == 204
 
@@ -228,7 +228,7 @@ def test_invalid_writes_are_mapped_to_their_status(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         model_id, tables = create_model(client)
-        base = f"/semantic/models/{model_id}"
+        base = f"/api/semantic/models/{model_id}"
 
         bad_field = client.post(
             f"{base}/relationships",
@@ -262,7 +262,7 @@ def test_patch_entity_renames_before_changing_the_table(config_dir: Path) -> Non
     app = create_app()
     with TestClient(app) as client:
         model_id, tables = create_model(client)
-        base = f"/semantic/models/{model_id}"
+        base = f"/api/semantic/models/{model_id}"
 
         response = client.patch(
             f"{base}/entities/customers",

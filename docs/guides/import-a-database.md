@@ -28,7 +28,7 @@ flowchart LR
 ## 1. Create the connection
 
 ```bash
-CONN=$(curl -s -X POST http://localhost:8000/ingestion/connections \
+CONN=$(curl -s -X POST http://localhost:8000/api/ingestion/connections \
   -H 'Content-Type: application/json' \
   -d '{
         "name": "warehouse",
@@ -51,7 +51,7 @@ A connection carries **exactly one** credential source: an external reference
 ## 2. Test it
 
 ```bash
-curl -s -X POST "http://localhost:8000/ingestion/connections/$CONN/test"
+curl -s -X POST "http://localhost:8000/api/ingestion/connections/$CONN/test"
 ```
 
 The answer is `{"ok": true, "latency_ms": 12, "error": null}`; a failure fills
@@ -60,8 +60,8 @@ The answer is `{"ok": true, "latency_ms": 12, "error": null}`; a failure fills
 ## 3. Look before you leap
 
 ```bash
-curl -s "http://localhost:8000/ingestion/connections/$CONN/inspect?schema=public&table=contacts&limit=20"
-curl -s -X POST "http://localhost:8000/ingestion/connections/$CONN/plan" \
+curl -s "http://localhost:8000/api/ingestion/connections/$CONN/inspect?schema=public&table=contacts&limit=20"
+curl -s -X POST "http://localhost:8000/api/ingestion/connections/$CONN/plan" \
   -H 'Content-Type: application/json' \
   -d "{\"target_catalog_id\": \"$CATALOG\", \"include_schemas\": [\"public\"]}"
 ```
@@ -73,7 +73,7 @@ target names it would create, the source types it cannot map and any warnings
 ## 4. Import
 
 ```bash
-curl -s -X POST "http://localhost:8000/ingestion/connections/$CONN/import" \
+curl -s -X POST "http://localhost:8000/api/ingestion/connections/$CONN/import" \
   -H 'Content-Type: application/json' \
   -d "{
         \"target_catalog_id\": \"$CATALOG\",
@@ -96,8 +96,8 @@ and a changed column type is recorded as a change instead of a duplicate.
 ## 5. Read the history
 
 ```bash
-curl -s http://localhost:8000/ingestion/runs
-curl -s "http://localhost:8000/ingestion/runs/$RUN"
+curl -s http://localhost:8000/api/ingestion/runs
+curl -s "http://localhost:8000/api/ingestion/runs/$RUN"
 ```
 
 `started`, `status`, counters and the failure reason are in the read model; the

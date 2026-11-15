@@ -50,6 +50,40 @@ prompt — there is no password option.
 
 Protected commands take `--session TOKEN` or read `$IAM_SESSION`.
 
+## `etla deploy`
+
+Publishes the service to a hosting target. Only the Databricks Apps target
+exists today, so its flag is required.
+
+```bash
+uv run etla deploy --databricks-apps [--profile NAME] [--app-name NAME]
+                   [--remote-path PATH] [--config FILE]... [--source PATH]
+                   [--dist-ui PATH] [--build/--no-build] [--prune] [--force]
+                   [--dry-run] [--yes] [--timeout N] [--json]
+```
+
+| Option | Effect |
+|---|---|
+| `--databricks-apps` | deploy the service and the built SPA as a Databricks App |
+| `--profile`, `-p` | Databricks CLI profile; defaults to `deploy.databricks.profile` |
+| `--app-name` | existing app; the command never creates one |
+| `--remote-path` | workspace folder; defaults to `/Workspace/Users/<user>/<app-name>` |
+| `--config`, `-c` | configuration file uploaded next to the app; repeat to layer, later wins |
+| `--source` | repository root that is staged (default `.`) |
+| `--dist-ui` | built bundle; defaults to `<source>/dist/ui` |
+| `--build/--no-build` | run `pnpm build` first; the default builds only when the bundle is missing |
+| `--prune` | delete remote files that no longer exist locally |
+| `--force` | upload every file instead of only the changed ones |
+| `--dry-run` | print the plan and stop |
+| `--yes`, `-y` | skip the confirmation, required in a non-interactive shell |
+| `--timeout` | seconds to wait for the deployment to finish (default `900`) |
+| `--json` | print the report as JSON |
+
+The command lists the remote folder concurrently, compares it with a local
+SHA-256 snapshot, uploads only the added and updated files (plus a small
+`.etlalchemy-deploy.json` manifest), then starts a `SNAPSHOT` deployment and
+polls it. See [Deploy to Databricks Apps](../guides/deploy-to-databricks-apps.md).
+
 ## Exit codes
 
 | Code | Meaning |

@@ -53,6 +53,7 @@ nav:
       - Import a source database: guides/import-a-database.md
       - Use the agent: guides/use-the-agent.md
       - Run the frontend: guides/run-the-frontend.md
+      - Deploy to Databricks Apps: guides/deploy-to-databricks-apps.md
       - Run the quality gates: guides/run-quality-gates.md
       - Add a bounded context: guides/add-a-bounded-context.md
       - Build the documentation: guides/build-the-docs.md

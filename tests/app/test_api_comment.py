@@ -53,13 +53,13 @@ def login(client: TestClient, email: str) -> dict[str, str]:
     """Authenticates and waits for the session row, returning the bearer headers."""
     body = {"login": email, "password": PASSWORD}
     deadline = time.monotonic() + WAIT_TIMEOUT
-    response = client.post("/iam/auth/password", json=body)
+    response = client.post("/api/iam/auth/password", json=body)
     while response.status_code != 200 and time.monotonic() < deadline:
         time.sleep(0.05)
-        response = client.post("/iam/auth/password", json=body)
+        response = client.post("/api/iam/auth/password", json=body)
     assert response.status_code == 200, response.text
     headers = {"Authorization": f"Bearer {response.json()['access_token']}"}
-    wait_for(lambda: client.get("/iam/sessions/current", headers=headers).status_code == 200)
+    wait_for(lambda: client.get("/api/iam/sessions/current", headers=headers).status_code == 200)
     return headers
 
 
@@ -68,12 +68,12 @@ def test_thread_lifecycle(config_dir: Any) -> None:
     seed_admin("root@example.com")
 
     with TestClient(create_app()) as client:
-        wait_for(lambda: client.get("/iam/bootstrap").json()["completed"])
+        wait_for(lambda: client.get("/api/iam/bootstrap").json()["completed"])
         headers = login(client, "root@example.com")
         target = str(uuid4())
 
         created = client.post(
-            "/comments/threads",
+            "/api/comments/threads",
             json={
                 "target_type": "table",
                 "target_id": target,
@@ -88,7 +88,7 @@ def test_thread_lifecycle(config_dir: Any) -> None:
 
         listed = wait_for(
             lambda: client.get(
-                "/comments/threads",
+                "/api/comments/threads",
                 params={"target_type": "table", "target_id": target},
                 headers=headers,
             ).json()
@@ -98,7 +98,7 @@ def test_thread_lifecycle(config_dir: Any) -> None:
         assert listed[0]["comment_count"] == 1
 
         reply = client.post(
-            f"/comments/threads/{thread_id}/comments",
+            f"/api/comments/threads/{thread_id}/comments",
             json={"body": "first reply", "parent_comment_id": root_id},
             headers=headers,
         )
@@ -112,19 +112,19 @@ def test_thread_lifecycle(config_dir: Any) -> None:
                 lambda response: response.json()
                 if response.status_code == 200 and response.json()["thread"]["comment_count"] == 2
                 else None
-            )(client.get(f"/comments/threads/{thread_id}", headers=headers))
+            )(client.get(f"/api/comments/threads/{thread_id}", headers=headers))
         )
         assert [row["depth"] for row in detail["comments"]] == [0, 1]
 
         edited = client.patch(
-            f"/comments/threads/{thread_id}/comments/{reply_id}",
+            f"/api/comments/threads/{thread_id}/comments/{reply_id}",
             json={"body": "edited reply"},
             headers=headers,
         )
         assert edited.status_code == 200, edited.text
         wait_for(
             lambda: client.get(
-                f"/comments/threads/{thread_id}",
+                f"/api/comments/threads/{thread_id}",
                 headers=headers,
             ).json()["comments"][1]["body"]
             == "edited reply"
@@ -137,7 +137,7 @@ def test_thread_lifecycle(config_dir: Any) -> None:
                 else None
             )(
                 client.get(
-                    f"/comments/threads/{thread_id}/comments",
+                    f"/api/comments/threads/{thread_id}/comments",
                     params={"flatten_after": 0},
                     headers=headers,
                 )
@@ -146,31 +146,31 @@ def test_thread_lifecycle(config_dir: Any) -> None:
         assert [row["depth"] for row in flattened] == [0, 0]
 
         resolved = client.post(
-            f"/comments/threads/{thread_id}/resolve",
+            f"/api/comments/threads/{thread_id}/resolve",
             headers=headers,
         )
         assert resolved.status_code == 200, resolved.text
 
         reopened = client.post(
-            f"/comments/threads/{thread_id}/reopen",
+            f"/api/comments/threads/{thread_id}/reopen",
             headers=headers,
         )
         assert reopened.status_code == 200, reopened.text
 
         discarded = client.delete(
-            f"/comments/threads/{thread_id}/comments/{reply_id}",
+            f"/api/comments/threads/{thread_id}/comments/{reply_id}",
             headers=headers,
         )
         assert discarded.status_code == 204, discarded.text
 
         discarded_thread = client.delete(
-            f"/comments/threads/{thread_id}",
+            f"/api/comments/threads/{thread_id}",
             headers=headers,
         )
         assert discarded_thread.status_code == 204, discarded_thread.text
         wait_for(
             lambda: client.get(
-                f"/comments/threads/{thread_id}",
+                f"/api/comments/threads/{thread_id}",
                 headers=headers,
             ).status_code
             == 404
@@ -182,17 +182,17 @@ def test_error_status_mapping(config_dir: Any) -> None:
     seed_admin("root@example.com")
 
     with TestClient(create_app()) as client:
-        wait_for(lambda: client.get("/iam/bootstrap").json()["completed"])
+        wait_for(lambda: client.get("/api/iam/bootstrap").json()["completed"])
         headers = login(client, "root@example.com")
         target = str(uuid4())
 
-        missing_session = client.get("/comments/threads")
+        missing_session = client.get("/api/comments/threads")
         assert missing_session.status_code == 401
 
         # Diagrams are still keyed by name inside their model, so the type is not
         # registered and the thread is rejected before any lookup.
         unregistered = client.post(
-            "/comments/threads",
+            "/api/comments/threads",
             json={
                 "target_type": "diagram",
                 "target_id": target,
@@ -203,27 +203,27 @@ def test_error_status_mapping(config_dir: Any) -> None:
         assert unregistered.status_code == 404
 
         blank = client.post(
-            "/comments/threads",
+            "/api/comments/threads",
             json={"target_type": "table", "target_id": target, "body": "   "},
             headers=headers,
         )
         assert blank.status_code == 400
 
         created = client.post(
-            "/comments/threads",
+            "/api/comments/threads",
             json={"target_type": "table", "target_id": target, "body": "root"},
             headers=headers,
         )
         thread_id = created.json()["thread_id"]
 
         unknown_thread = client.get(
-            f"/comments/threads/{uuid4()}",
+            f"/api/comments/threads/{uuid4()}",
             headers=headers,
         )
         assert unknown_thread.status_code == 404
 
         unknown_parent = client.post(
-            f"/comments/threads/{thread_id}/comments",
+            f"/api/comments/threads/{thread_id}/comments",
             json={"body": "reply", "parent_comment_id": str(uuid4())},
             headers=headers,
         )
@@ -231,14 +231,14 @@ def test_error_status_mapping(config_dir: Any) -> None:
 
         assert (
             client.post(
-                f"/comments/threads/{thread_id}/resolve",
+                f"/api/comments/threads/{thread_id}/resolve",
                 headers=headers,
             ).status_code
             == 200
         )
         assert (
             client.post(
-                f"/comments/threads/{thread_id}/resolve",
+                f"/api/comments/threads/{thread_id}/resolve",
                 headers=headers,
             ).status_code
             == 409
@@ -248,24 +248,24 @@ def test_error_status_mapping(config_dir: Any) -> None:
 def _catalog_field(client: TestClient, headers: dict[str, str]) -> dict[str, Any]:
     """Creates a catalog, schema, table and field and returns the field row."""
     catalog_id = client.post(
-        "/catalog/catalogs", params={"name": "Customer 360"}, headers=headers
+        "/api/catalog/catalogs", params={"name": "Customer 360"}, headers=headers
     ).json()["catalog_id"]
     client.post(
-        f"/catalog/catalogs/{catalog_id}/schemas",
+        f"/api/catalog/catalogs/{catalog_id}/schemas",
         params={"schema_name": "crm"},
         headers=headers,
     )
     table_id = client.post(
-        f"/catalog/catalogs/{catalog_id}/schemas/crm/tables",
+        f"/api/catalog/catalogs/{catalog_id}/schemas/crm/tables",
         params={"table_name": "contacts"},
         headers=headers,
     ).json()["table_id"]
     client.post(
-        f"/catalog/catalogs/{catalog_id}/schemas/crm/tables/contacts/fields",
+        f"/api/catalog/catalogs/{catalog_id}/schemas/crm/tables/contacts/fields",
         params={"field_name": "contact_id", "data_type": "uuid"},
         headers=headers,
     )
-    url = f"/catalog/catalogs/{catalog_id}/schemas/crm/tables/contacts/fields"
+    url = f"/api/catalog/catalogs/{catalog_id}/schemas/crm/tables/contacts/fields"
     fields = wait_for(
         lambda: (
             lambda response: response.json()
@@ -281,13 +281,13 @@ def test_field_and_entity_carry_an_identity(config_dir: Any) -> None:
     seed_admin("root@example.com")
 
     with TestClient(create_app()) as client:
-        wait_for(lambda: client.get("/iam/bootstrap").json()["completed"])
+        wait_for(lambda: client.get("/api/iam/bootstrap").json()["completed"])
         headers = login(client, "root@example.com")
         created = _catalog_field(client, headers)
         field_id = created["field"]["field_id"]
 
         renamed = client.post(
-            f"/catalog/catalogs/{created['catalog_id']}/schemas/crm/tables/contacts/fields/"
+            f"/api/catalog/catalogs/{created['catalog_id']}/schemas/crm/tables/contacts/fields/"
             "contact_id/rename",
             json={"new_name": "contact_key"},
             headers=headers,
@@ -301,7 +301,7 @@ def test_field_and_entity_carry_an_identity(config_dir: Any) -> None:
                     lambda response: response.json() if response.status_code == 200 else []
                 )(
                     client.get(
-                        "/catalog/catalogs/"
+                        "/api/catalog/catalogs/"
                         f"{created['catalog_id']}/schemas/crm/tables/contacts/fields",
                         headers=headers,
                     )
@@ -311,10 +311,10 @@ def test_field_and_entity_carry_an_identity(config_dir: Any) -> None:
         assert renamed_field["field_id"] == field_id
 
         model_id = client.post(
-            "/semantic/models", json={"name": "Compensation 360"}, headers=headers
+            "/api/semantic/models", json={"name": "Compensation 360"}, headers=headers
         ).json()["model_id"]
         entity = client.post(
-            f"/semantic/models/{model_id}/entities",
+            f"/api/semantic/models/{model_id}/entities",
             json={"name": "Employee", "table_id": created["table_id"]},
             headers=headers,
         ).json()
@@ -324,8 +324,8 @@ def test_field_and_entity_carry_an_identity(config_dir: Any) -> None:
         listed = wait_for(
             lambda: (
                 lambda response: response.json() if response.status_code == 200 else None
-            )(client.get(f"/semantic/models/{model_id}/entities", headers=headers))
-            and client.get(f"/semantic/models/{model_id}/entities", headers=headers).json()
+            )(client.get(f"/api/semantic/models/{model_id}/entities", headers=headers))
+            and client.get(f"/api/semantic/models/{model_id}/entities", headers=headers).json()
         )
         assert listed[0]["entity_id"] == entity_id
 
@@ -335,23 +335,23 @@ def test_target_descriptions_name_the_object(config_dir: Any) -> None:
     seed_admin("root@example.com")
 
     with TestClient(create_app()) as client:
-        wait_for(lambda: client.get("/iam/bootstrap").json()["completed"])
+        wait_for(lambda: client.get("/api/iam/bootstrap").json()["completed"])
         headers = login(client, "root@example.com")
         created = _catalog_field(client, headers)
         field_id = created["field"]["field_id"]
 
         model_id = client.post(
-            "/semantic/models", json={"name": "Compensation 360"}, headers=headers
+            "/api/semantic/models", json={"name": "Compensation 360"}, headers=headers
         ).json()["model_id"]
         entity_id = client.post(
-            f"/semantic/models/{model_id}/entities",
+            f"/api/semantic/models/{model_id}/entities",
             json={"name": "Employee", "table_id": created["table_id"]},
             headers=headers,
         ).json()["entity_id"]
 
         for target_type, target_id in (("field", field_id), ("semantic_entity", entity_id)):
             thread = client.post(
-                "/comments/threads",
+                "/api/comments/threads",
                 json={
                     "target_type": target_type,
                     "target_id": target_id,
@@ -362,7 +362,7 @@ def test_target_descriptions_name_the_object(config_dir: Any) -> None:
             assert thread.status_code == 201, thread.text
 
         field_target = client.get(
-            f"/comments/targets/field/{field_id}", headers=headers
+            f"/api/comments/targets/field/{field_id}", headers=headers
         )
         assert field_target.status_code == 200, field_target.text
         described = field_target.json()
@@ -379,7 +379,7 @@ def test_target_descriptions_name_the_object(config_dir: Any) -> None:
                 else None
             )(
                 client.get(
-                    f"/comments/targets/semantic_entity/{entity_id}", headers=headers
+                    f"/api/comments/targets/semantic_entity/{entity_id}", headers=headers
                 )
             )
         )
@@ -388,7 +388,7 @@ def test_target_descriptions_name_the_object(config_dir: Any) -> None:
         assert entity_target["entity_name"] == "Employee"
 
         batch = client.post(
-            "/comments/targets/lookup",
+            "/api/comments/targets/lookup",
             json={
                 "refs": [
                     {"target_type": "field", "target_id": field_id},
@@ -403,6 +403,6 @@ def test_target_descriptions_name_the_object(config_dir: Any) -> None:
         assert [row["target_type"] for row in batch.json()] == ["field", "semantic_entity"]
 
         unknown = client.get(
-            f"/comments/targets/semantic_entity/{uuid4()}", headers=headers
+            f"/api/comments/targets/semantic_entity/{uuid4()}", headers=headers
         )
         assert unknown.status_code == 404

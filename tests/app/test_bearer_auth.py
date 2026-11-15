@@ -51,7 +51,7 @@ def seed_admin(email: str) -> None:
 def form_login(client: TestClient, email: str, scope: str = "") -> Any:
     """Submits the OAuth2 password grant form."""
     return client.post(
-        "/iam/auth/token",
+        "/api/iam/auth/token",
         data={"username": email, "password": PASSWORD, "scope": scope},
     )
 
@@ -72,7 +72,7 @@ def test_form_login_returns_a_usable_bearer_token(config_dir: Any) -> None:
     seed_admin("root@example.com")
 
     with TestClient(create_app()) as client:
-        wait_for(lambda: client.get("/iam/bootstrap").json()["completed"])
+        wait_for(lambda: client.get("/api/iam/bootstrap").json()["completed"])
 
         response = wait_for_form_login(client, "root@example.com")
 
@@ -83,8 +83,8 @@ def test_form_login_returns_a_usable_bearer_token(config_dir: Any) -> None:
 
         headers = {"Authorization": f"Bearer {payload['access_token']}"}
         current = wait_for(
-            lambda: client.get("/iam/sessions/current", headers=headers).json()
-            if client.get("/iam/sessions/current", headers=headers).status_code == 200
+            lambda: client.get("/api/iam/sessions/current", headers=headers).json()
+            if client.get("/api/iam/sessions/current", headers=headers).status_code == 200
             else None,
         )
         assert current["session_id"] == payload["session_id"]
@@ -96,7 +96,7 @@ def test_form_login_rejects_a_malformed_tenant_scope(config_dir: Any) -> None:
     seed_admin("root@example.com")
 
     with TestClient(create_app()) as client:
-        wait_for(lambda: client.get("/iam/bootstrap").json()["completed"])
+        wait_for(lambda: client.get("/api/iam/bootstrap").json()["completed"])
 
         response = form_login(client, "root@example.com", "tenant:not-a-uuid")
 
@@ -109,33 +109,33 @@ def test_form_login_carries_the_tenant_in_the_scope(config_dir: Any) -> None:
     seed_admin("root@example.com")
 
     with TestClient(create_app()) as client:
-        wait_for(lambda: client.get("/iam/bootstrap").json()["completed"])
+        wait_for(lambda: client.get("/api/iam/bootstrap").json()["completed"])
         root = wait_for_form_login(client, "root@example.com").json()
         headers = {"Authorization": f"Bearer {root['access_token']}"}
-        wait_for(lambda: client.get("/iam/sessions/current", headers=headers).status_code == 200)
+        wait_for(lambda: client.get("/api/iam/sessions/current", headers=headers).status_code == 200)
         tenant_id = client.post(
-            "/iam/tenants",
+            "/api/iam/tenants",
             json={"name": "acme"},
             headers=headers,
         ).json()["tenant_id"]
         user_id = client.post(
-            "/iam/users",
+            "/api/iam/users",
             json={"username": "alice", "email": "alice@example.com"},
             headers=headers,
         ).json()["user_id"]
         client.post(
-            f"/iam/users/{user_id}/identities/password",
+            f"/api/iam/users/{user_id}/identities/password",
             json={"password": PASSWORD},
             headers=headers,
         )
         client.post(
-            f"/iam/tenants/{tenant_id}/members",
+            f"/api/iam/tenants/{tenant_id}/members",
             json={"user_id": user_id},
             headers=headers,
         )
         wait_for(
             lambda: client.get(
-                f"/iam/tenants/{tenant_id}/members",
+                f"/api/iam/tenants/{tenant_id}/members",
                 headers=headers,
             ).status_code
             == 200
@@ -143,7 +143,7 @@ def test_form_login_carries_the_tenant_in_the_scope(config_dir: Any) -> None:
             in [
                 member["username"]
                 for member in client.get(
-                    f"/iam/tenants/{tenant_id}/members",
+                    f"/api/iam/tenants/{tenant_id}/members",
                     headers=headers,
                 ).json()
             ],
@@ -160,16 +160,16 @@ def test_logout_invalidates_the_token(config_dir: Any) -> None:
     seed_admin("root@example.com")
 
     with TestClient(create_app()) as client:
-        wait_for(lambda: client.get("/iam/bootstrap").json()["completed"])
+        wait_for(lambda: client.get("/api/iam/bootstrap").json()["completed"])
         payload = wait_for_form_login(client, "root@example.com").json()
         headers = {"Authorization": f"Bearer {payload['access_token']}"}
-        wait_for(lambda: client.get("/iam/sessions/current", headers=headers).status_code == 200)
+        wait_for(lambda: client.get("/api/iam/sessions/current", headers=headers).status_code == 200)
 
-        assert client.post("/iam/auth/logout", headers=headers).status_code == 204
+        assert client.post("/api/iam/auth/logout", headers=headers).status_code == 204
 
         rejected = wait_for(
-            lambda: client.get("/iam/sessions/current", headers=headers)
-            if client.get("/iam/sessions/current", headers=headers).status_code == 401
+            lambda: client.get("/api/iam/sessions/current", headers=headers)
+            if client.get("/api/iam/sessions/current", headers=headers).status_code == 401
             else None,
         )
         assert rejected.json() == {"detail": "invalid or expired token"}
@@ -181,4 +181,4 @@ def test_openapi_advertises_the_password_flow(config_dir: Any) -> None:
         schema = client.get("/openapi.json").json()
 
     scheme = schema["components"]["securitySchemes"]["OAuth2PasswordBearer"]
-    assert scheme["flows"]["password"]["tokenUrl"] == "/iam/auth/token"
+    assert scheme["flows"]["password"]["tokenUrl"] == "/api/iam/auth/token"

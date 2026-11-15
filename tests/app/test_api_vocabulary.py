@@ -27,10 +27,10 @@ def wait_for(predicate: Callable[[], Any], timeout: float = WAIT_TIMEOUT) -> Any
 
 def create_tree(client: TestClient) -> tuple[str, str, str, str]:
     """Creates finance/Revenue, Revenue/ARR and Revenue/ARR/MRR."""
-    domain = client.post("/vocabulary/domains", json={"name": "finance"})
+    domain = client.post("/api/vocabulary/domains", json={"name": "finance"})
     assert domain.status_code == 201
     domain_id = domain.json()["domain_id"]
-    base = f"/vocabulary/domains/{domain_id}/terms"
+    base = f"/api/vocabulary/domains/{domain_id}/terms"
 
     root = client.post(base, json={"name": "Revenue", "definition": "Recognized revenue"})
     assert root.status_code == 201
@@ -60,30 +60,30 @@ def create_tree(client: TestClient) -> tuple[str, str, str, str]:
 
 def create_catalog_field(client: TestClient) -> tuple[str, str]:
     """Creates a catalog, schema, table and field, returning the table id."""
-    catalog = client.post("/catalog/catalogs", params={"name": "analytics"})
+    catalog = client.post("/api/catalog/catalogs", params={"name": "analytics"})
     assert catalog.status_code == 200
     catalog_id = catalog.json()["catalog_id"]
     assert (
         client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas",
+            f"/api/catalog/catalogs/{catalog_id}/schemas",
             params={"schema_name": "sales"},
         ).status_code
         == 200
     )
     table = client.post(
-        f"/catalog/catalogs/{catalog_id}/schemas/sales/tables",
+        f"/api/catalog/catalogs/{catalog_id}/schemas/sales/tables",
         params={"table_name": "orders"},
     )
     assert table.status_code == 200
     table_id = table.json()["table_id"]
     assert (
         client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders/fields",
+            f"/api/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders/fields",
             params={"field_name": "customer_id", "data_type": "integer", "nullable": False},
         ).status_code
         == 200
     )
-    fields_url = f"/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders/fields"
+    fields_url = f"/api/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders/fields"
 
     def field_visible() -> bool:
         response = client.get(fields_url)
@@ -98,7 +98,7 @@ def test_domain_and_tree_roundtrip(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         domain_id, root_id, arr_id, mrr_id = create_tree(client)
-        base = f"/vocabulary/domains/{domain_id}/terms"
+        base = f"/api/vocabulary/domains/{domain_id}/terms"
 
         rows = client.get(base).json()
         assert [(row["path"], row["parent_id"]) for row in rows] == [
@@ -107,10 +107,10 @@ def test_domain_and_tree_roundtrip(config_dir: Path) -> None:
             ("Revenue/ARR/MRR", arr_id),
         ]
         assert [row["term_id"] for row in client.get(
-            f"/vocabulary/domains/{domain_id}/children"
+            f"/api/vocabulary/domains/{domain_id}/children"
         ).json()] == [root_id]
         assert [row["term_id"] for row in client.get(
-            f"/vocabulary/domains/{domain_id}/children", params={"parent": "Revenue"}
+            f"/api/vocabulary/domains/{domain_id}/children", params={"parent": "Revenue"}
         ).json()] == [arr_id]
         assert [row["term_id"] for row in client.get(
             f"{base}/{root_id}/descendants"
@@ -127,7 +127,7 @@ def test_rename_and_move_repath_the_subtree(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         domain_id, root_id, arr_id, mrr_id = create_tree(client)
-        base = f"/vocabulary/domains/{domain_id}/terms"
+        base = f"/api/vocabulary/domains/{domain_id}/terms"
 
         assert client.patch(f"{base}/{root_id}", json={"name": "Sales"}).status_code == 200
 
@@ -152,7 +152,7 @@ def test_cycle_duplicate_and_invalid_names_are_rejected(config_dir: Path) -> Non
     app = create_app()
     with TestClient(app) as client:
         domain_id, root_id, _, _ = create_tree(client)
-        base = f"/vocabulary/domains/{domain_id}/terms"
+        base = f"/api/vocabulary/domains/{domain_id}/terms"
 
         assert (
             client.post(f"{base}/{root_id}/move", json={"new_parent": "Revenue/ARR"}).status_code
@@ -175,7 +175,7 @@ def test_status_flow_and_links(config_dir: Path) -> None:
     with TestClient(app) as client:
         domain_id, _, arr_id, _ = create_tree(client)
         _, table_id = create_catalog_field(client)
-        base = f"/vocabulary/domains/{domain_id}/terms"
+        base = f"/api/vocabulary/domains/{domain_id}/terms"
 
         assert client.post(f"{base}/{arr_id}/links", params={
             "target_id": table_id,
@@ -192,16 +192,16 @@ def test_status_flow_and_links(config_dir: Path) -> None:
 
         for url, params in (
             (
-                "/vocabulary/terms-for-target",
+                "/api/vocabulary/terms-for-target",
                 {
                     "target_id": table_id,
                     "target_kind": "field",
                     "field_name": "customer_id",
                 },
             ),
-            ("/vocabulary/terms-for-table", {"table_id": table_id}),
+            ("/api/vocabulary/terms-for-table", {"table_id": table_id}),
             (
-                "/vocabulary/terms-for-field",
+                "/api/vocabulary/terms-for-field",
                 {"table_id": table_id, "field_name": "customer_id"},
             ),
         ):
@@ -229,7 +229,7 @@ def test_search_and_discard_cascade(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         domain_id, root_id, arr_id, mrr_id = create_tree(client)
-        base = f"/vocabulary/domains/{domain_id}/terms"
+        base = f"/api/vocabulary/domains/{domain_id}/terms"
 
         assert client.patch(
             f"{base}/{arr_id}",
@@ -237,7 +237,7 @@ def test_search_and_discard_cascade(config_dir: Path) -> None:
         ).status_code == 200
 
         def alias_indexed() -> list[dict[str, Any]] | None:
-            rows = client.get("/vocabulary/search", params={"q": "annual"}).json()
+            rows = client.get("/api/vocabulary/search", params={"q": "annual"}).json()
             if rows and rows[0]["matched_alias"] == "annual recurring revenue":
                 return rows
             return None
@@ -250,7 +250,7 @@ def test_search_and_discard_cascade(config_dir: Path) -> None:
         assert client.delete(f"{base}/{root_id}").status_code == 204
         wait_for(lambda: client.get(base).json() == [])
         assert client.get(f"{base}/{mrr_id}").status_code == 404
-        assert client.get(f"/vocabulary/domains/{domain_id}").status_code == 200
+        assert client.get(f"/api/vocabulary/domains/{domain_id}").status_code == 200
 
 
 def test_term_colour_roundtrip(config_dir: Path) -> None:
@@ -258,7 +258,7 @@ def test_term_colour_roundtrip(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         domain_id, root_id, arr_id, _ = create_tree(client)
-        base = f"/vocabulary/domains/{domain_id}/terms"
+        base = f"/api/vocabulary/domains/{domain_id}/terms"
 
         coloured = client.post(base, json={"name": "TCV", "definition": "Total", "color": "#F2C811"})
         assert coloured.status_code == 201
@@ -307,7 +307,7 @@ def test_invalid_term_colour_is_rejected(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         domain_id, root_id, _, _ = create_tree(client)
-        base = f"/vocabulary/domains/{domain_id}/terms"
+        base = f"/api/vocabulary/domains/{domain_id}/terms"
 
         response = client.patch(f"{base}/{root_id}", json={"color": "amber"})
 

@@ -37,7 +37,7 @@ sequenceDiagram
 ## 1. Create the catalog
 
 ```bash
-CATALOG=$(curl -s -X POST 'http://localhost:8000/catalog/catalogs?name=crm' \
+CATALOG=$(curl -s -X POST 'http://localhost:8000/api/catalog/catalogs?name=crm' \
   | sed -n 's/.*"catalog_id":"\([^"]*\)".*/\1/p')
 echo "$CATALOG"
 ```
@@ -48,13 +48,13 @@ does not race the projection.
 ## 2. Add a schema
 
 ```bash
-curl -s -X POST "http://localhost:8000/catalog/catalogs/$CATALOG/schemas?schema_name=sales"
+curl -s -X POST "http://localhost:8000/api/catalog/catalogs/$CATALOG/schemas?schema_name=sales"
 ```
 
 ## 3. Add a table
 
 ```bash
-curl -s -X POST "http://localhost:8000/catalog/catalogs/$CATALOG/schemas/sales/tables?table_name=contacts"
+curl -s -X POST "http://localhost:8000/api/catalog/catalogs/$CATALOG/schemas/sales/tables?table_name=contacts"
 ```
 
 `sales` is a registry **name**; a schema id works in the same position, which
@@ -64,7 +64,7 @@ keeps links valid after a rename.
 
 ```bash
 curl -s -X POST \
-  "http://localhost:8000/catalog/catalogs/$CATALOG/schemas/sales/tables/contacts/fields?field_name=email&data_type=varchar(255)&nullable=false"
+  "http://localhost:8000/api/catalog/catalogs/$CATALOG/schemas/sales/tables/contacts/fields?field_name=email&data_type=varchar(255)&nullable=false"
 ```
 
 `data_type` is parsed and normalised (`VARCHAR(255)` → `varchar(255)`); an
@@ -73,7 +73,7 @@ unknown or wrongly parameterised type is a `400`.
 ## 5. Read it back
 
 ```bash
-curl -s "http://localhost:8000/catalog/catalogs/$CATALOG/schemas/sales/tables/contacts/fields"
+curl -s "http://localhost:8000/api/catalog/catalogs/$CATALOG/schemas/sales/tables/contacts/fields"
 ```
 
 ```json
@@ -87,10 +87,10 @@ the projection, which applies the event asynchronously.
 ## 6. Change and discard
 
 ```bash
-curl -s -X PATCH "http://localhost:8000/catalog/catalogs/$CATALOG/schemas/sales/tables/contacts" \
+curl -s -X PATCH "http://localhost:8000/api/catalog/catalogs/$CATALOG/schemas/sales/tables/contacts" \
   -H 'Content-Type: application/json' -d '{"description": "One row per person."}'
 curl -s -o /dev/null -w '%{http_code}\n' -X DELETE \
-  "http://localhost:8000/catalog/catalogs/$CATALOG/schemas/sales/tables/contacts"
+  "http://localhost:8000/api/catalog/catalogs/$CATALOG/schemas/sales/tables/contacts"
 ```
 
 `204` is a soft delete: the row keeps its `discarded_at`, every read filters it

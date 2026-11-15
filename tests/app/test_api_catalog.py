@@ -31,38 +31,38 @@ def test_catalog_api_roundtrip(config_dir: Path) -> None:
     """Writes through the application and reads from the read model."""
     app = create_app()
     with TestClient(app) as client:
-        created = client.post("/catalog/catalogs", params={"name": "analytics"})
+        created = client.post("/api/catalog/catalogs", params={"name": "analytics"})
         assert created.status_code == 200
         catalog_id = created.json()["catalog_id"]
 
         schema = client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas",
+            f"/api/catalog/catalogs/{catalog_id}/schemas",
             params={"schema_name": "sales", "description": "Sales data"},
         )
         assert schema.status_code == 200
         assert "schema_id" in schema.json()
 
         table = client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas/sales/tables",
+            f"/api/catalog/catalogs/{catalog_id}/schemas/sales/tables",
             params={"table_name": "orders"},
         )
         assert table.status_code == 200
 
         field = client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders/fields",
+            f"/api/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders/fields",
             params={"field_name": "id", "data_type": "integer", "nullable": False},
         )
         assert field.status_code == 200
 
         patched = client.patch(
-            f"/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders",
+            f"/api/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders",
             json={"description": "Orders fact table"},
         )
         assert patched.status_code == 200
 
         def table_payload() -> dict[str, Any]:
             response = client.get(
-                f"/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders"
+                f"/api/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders"
             )
             if response.status_code != 200:
                 return {}
@@ -72,48 +72,48 @@ def test_catalog_api_roundtrip(config_dir: Path) -> None:
         table = wait_for(table_payload)
         assert table["name"] == "orders"
         assert client.patch(
-            f"/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders", json={}
+            f"/api/catalog/catalogs/{catalog_id}/schemas/sales/tables/orders", json={}
         ).status_code == 400
 
-        catalogs = wait_for(lambda: client.get("/catalog/catalogs").json())
+        catalogs = wait_for(lambda: client.get("/api/catalog/catalogs").json())
         assert [(row["catalog_id"], row["name"]) for row in catalogs] == [
             (catalog_id, "analytics")
         ]
 
-        fetched = client.get(f"/catalog/catalogs/{catalog_id}")
+        fetched = client.get(f"/api/catalog/catalogs/{catalog_id}")
         assert fetched.status_code == 200
         assert fetched.json()["name"] == "analytics"
 
-        assert client.get(f"/catalog/catalogs/{uuid4()}").status_code == 404
+        assert client.get(f"/api/catalog/catalogs/{uuid4()}").status_code == 404
 
         schemas = wait_for(
-            lambda: client.get(f"/catalog/catalogs/{catalog_id}/schemas").json()
+            lambda: client.get(f"/api/catalog/catalogs/{catalog_id}/schemas").json()
         )
         assert [(row["name"], row["description"]) for row in schemas] == [
             ("sales", "Sales data")
         ]
 
-        results = wait_for(lambda: client.get("/catalog/search", params={"term": "id"}).json())
+        results = wait_for(lambda: client.get("/api/catalog/search", params={"term": "id"}).json())
         assert [(row["schema_name"], row["table_name"], row["field_name"]) for row in results] == [
             ("sales", "orders", "id")
         ]
         assert results[0]["nullable"] is False
 
         objects = wait_for(
-            lambda: client.get("/catalog/search-objects", params={"term": "ord"}).json()
+            lambda: client.get("/api/catalog/search-objects", params={"term": "ord"}).json()
         )
         assert [(row["kind"], row["name"], row["path"]) for row in objects] == [
             ("table", "orders", "analytics / sales / orders")
         ]
-        assert client.get("/catalog/search-objects", params={"term": "  "}).json() == []
+        assert client.get("/api/catalog/search-objects", params={"term": "  "}).json() == []
 
         fields_by_table = wait_for(
-            lambda: client.get(f"/catalog/tables/{table['table_id']}/fields").json()
+            lambda: client.get(f"/api/catalog/tables/{table['table_id']}/fields").json()
         )
         assert [(row["name"], row["data_type"]) for row in fields_by_table] == [("id", "integer")]
-        assert client.get(f"/catalog/tables/{uuid4()}/fields").status_code == 404
+        assert client.get(f"/api/catalog/tables/{uuid4()}/fields").status_code == 404
 
-        location = client.get(f"/catalog/tables/{table['table_id']}").json()
+        location = client.get(f"/api/catalog/tables/{table['table_id']}").json()
         assert location == {
             "table_id": table["table_id"],
             "name": "orders",
@@ -121,7 +121,7 @@ def test_catalog_api_roundtrip(config_dir: Path) -> None:
             "schema_id": table["schema_id"],
             "schema_name": "sales",
         }
-        assert client.get(f"/catalog/tables/{uuid4()}").status_code == 404
+        assert client.get(f"/api/catalog/tables/{uuid4()}").status_code == 404
 
 
 def test_catalog_api_maps_domain_errors(config_dir: Path) -> None:
@@ -129,24 +129,24 @@ def test_catalog_api_maps_domain_errors(config_dir: Path) -> None:
     app = create_app()
     with TestClient(app) as client:
         catalog_id = client.post(
-            "/catalog/catalogs", params={"name": "analytics"}
+            "/api/catalog/catalogs", params={"name": "analytics"}
         ).json()["catalog_id"]
 
         first = client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas",
+            f"/api/catalog/catalogs/{catalog_id}/schemas",
             params={"schema_name": "sales"},
         )
         assert first.status_code == 200
 
         duplicate = client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas",
+            f"/api/catalog/catalogs/{catalog_id}/schemas",
             params={"schema_name": "sales"},
         )
         assert duplicate.status_code == 409
         assert "sales" in duplicate.json()["detail"]
 
         missing = client.post(
-            f"/catalog/catalogs/{catalog_id}/schemas/warehouse/tables",
+            f"/api/catalog/catalogs/{catalog_id}/schemas/warehouse/tables",
             params={"table_name": "orders"},
         )
         assert missing.status_code == 404

@@ -21,10 +21,11 @@ pnpm install
 pnpm dev                                 # http://localhost:5173
 ```
 
-开发期 Vite 把 `/agent`、`/catalog`、`/semantic`、`/vocabulary`、`/ingestion`、`/comments`、`/iam`、`/mcp`
-代理到 `http://localhost:8000`，因此浏览器只看到一个 origin，不需要 CORS。`/agent` 既是
-API 前缀又是 SPA 路由，`bypassDocumentRequest` 让浏览器导航（`Accept: text/html`）拿到
-`index.html`，XHR 才走代理。
+开发期 Vite 只把 `/api` 和 `/mcp` 代理到 `http://localhost:8000`，因此浏览器只看到一个
+origin，不需要 CORS。所有业务请求都在 `/api` 前缀下（axios 的 `baseURL` 为 `/api`，也可用
+构建期变量 `VITE_API_BASE` 覆盖），SPA 自己的路由（`/iam/users`、`/agent` 等）与 API 路径
+不再重叠，刷新任意前端路由都会回落到 `index.html`。生产环境（包括 Databricks Apps）由
+FastAPI 同时提供 `dist/ui` 和 `/api`，同源，运行时不需要任何代理。
 
 ## 命令
 
@@ -67,14 +68,14 @@ src/
 
 ## 数据目录工作区（左树 + 右详情）
 
-`/catalog` 是唯一的数据目录工作区，路由在 `app/routes/router.tsx` 中嵌套：
+`/api/catalog` 是唯一的数据目录工作区，路由在 `app/routes/router.tsx` 中嵌套：
 
 | 路径                                                | 右侧面板                                                 |
 | --------------------------------------------------- | -------------------------------------------------------- |
-| `/catalog`                                          | Catalog 列表（列表 + New catalog）                       |
-| `/catalog/:catalogId`                               | Catalog 详情：`Schemas` / `Description` / `Linked terms` |
-| `/catalog/:catalogId/schemas/:schema`               | Schema 详情：`Tables` / `Description` / `Linked terms`   |
-| `/catalog/:catalogId/schemas/:schema/tables/:table` | Table 详情：`Fields` / `Description` / `Linked terms`    |
+| `/api/catalog`                                          | Catalog 列表（列表 + New catalog）                       |
+| `/api/catalog/:catalogId`                               | Catalog 详情：`Schemas` / `Description` / `Linked terms` |
+| `/api/catalog/:catalogId/schemas/:schema`               | Schema 详情：`Tables` / `Description` / `Linked terms`   |
+| `/api/catalog/:catalogId/schemas/:schema/tables/:table` | Table 详情：`Fields` / `Description` / `Linked terms`    |
 | `.../tables/:table/columns/:column`                 | Column 详情：Linked terms + Settings                     |
 
 - 四个详情页共用 `shared/ui/resource-detail-layout.tsx` 的 `ResourceDetailLayout`：
@@ -160,13 +161,13 @@ src/
 
 ## Business terms 工作区（左树 + 右详情）
 
-`/vocabulary` 与数据目录同架构，路由在 `app/routes/router.tsx` 中嵌套：
+`/api/vocabulary` 与数据目录同架构，路由在 `app/routes/router.tsx` 中嵌套：
 
 | 路径                                  | 右侧面板                                                               |
 | ------------------------------------- | ---------------------------------------------------------------------- |
-| `/vocabulary`                         | 域概览（域卡片网格 + New domain）                                      |
-| `/vocabulary/:domainId`               | 域详情：描述 + 状态徽标筛选 + 术语表格                                 |
-| `/vocabulary/:domainId/terms/:termId` | 术语详情：标题区（状态下拉 + 别名标签）+ Markdown 定义 + Catalog links |
+| `/api/vocabulary`                         | 域概览（域卡片网格 + New domain）                                      |
+| `/api/vocabulary/:domainId`               | 域详情：描述 + 状态徽标筛选 + 术语表格                                 |
+| `/api/vocabulary/:domainId/terms/:termId` | 术语详情：标题区（状态下拉 + 别名标签）+ Markdown 定义 + Catalog links |
 
 - `app/layouts/VocabularyLayout.tsx`：左侧 `w-80` 的 `widgets/term-explorer`（`bg-bg-surface` +
   `border-r`，独立滚动），右侧 `flex-1` 白底 + `mx-auto w-full max-w-5xl p-8`，切换节点用
@@ -220,7 +221,7 @@ src/
   只读摘要（无需先「下钻到某一层」再点确认）。
 - 链接列表（`features/term-actions/ui/TermLinksList.tsx`）每行左侧是层级图标（`Database` /
   `Folder` / `Table2` / `Columns3`，对应 catalog / schema / table / field），`px-4 py-3`、
-  hover `bg-bg-hover`；整行内容是指向对应页面的链接（catalog → `/catalog/:id`，schema / table /
+  hover `bg-bg-hover`；整行内容是指向对应页面的链接（catalog → `/api/catalog/:id`，schema / table /
   column 用后端解析出的 `catalog_id` / `schema_id` / `table_id` 拼深链，dangling 时不可点）；
   草稿术语在行尾常驻一个灰色 `Unlink` 图标（hover 变红），点击即
   `DELETE .../links?target_id=&target_kind=&field_name=` 并用 Toast 提示 `Link removed`。
@@ -232,7 +233,7 @@ src/
   `h-64`），检索/清空时对话框不会跟着伸缩；底部固定一行 “42 tables available / 23 tables match”。
 - 右侧：面包屑用 `shared/ui/breadcrumbs.tsx`（父级术语可点，路径按 `useTerms` 反查 id），
   面包屑后面跟一个小号大写的灰字标签标明节点类型（`Domain` / `Term`），一眼看出当前层级；
-  术语详情的 Catalog links 中 `catalog` 类型可直接跳到 `/catalog/:id`。
+  术语详情的 Catalog links 中 `catalog` 类型可直接跳到 `/api/catalog/:id`。
 - 域详情的状态筛选是一排可点的徽标（不是 Tabs）：`All / Draft / Approved / Deprecated`
   各自带计数，选中态加深边框（`border-current` + `shadow-sm`），未选中态 `opacity-70`；
   approved 用 `success`、deprecated 用 `warning-ink`，与表格里的状态徽标同色系。
@@ -246,17 +247,17 @@ src/
 
 ## Ingestion 工作区（Data sources）
 
-`/ingestion` 与目录/术语同构，只是没有左侧树：`app/layouts/IngestionLayout.tsx` 让页面从右向左
+`/api/ingestion` 与目录/术语同构，只是没有左侧树：`app/layouts/IngestionLayout.tsx` 让页面从右向左
 滑入（`initial={{ opacity: 0, x: 20 }}` → `0`，退出时反向），容器 `max-w-6xl p-8`。
 
 | 路径                                  | 页面                                                           |
 | ------------------------------------- | -------------------------------------------------------------- |
-| `/ingestion`                          | 两个 Tab：`Connections`（卡片网格）+ `Import runs`（全局历史） |
-| `/ingestion/:connectionId`            | 连接详情：`Import history` + `Settings`                        |
-| `/ingestion/:connectionId/new-import` | 三步导入向导                                                   |
+| `/api/ingestion`                          | 两个 Tab：`Connections`（卡片网格）+ `Import runs`（全局历史） |
+| `/api/ingestion/:connectionId`            | 连接详情：`Import history` + `Settings`                        |
+| `/api/ingestion/:connectionId/new-import` | 三步导入向导                                                   |
 
 - 侧边栏只有一条 `Data sources` 入口（图标 `Earth`）；导入历史不再是独立页面，
-  而是 `/ingestion` 的第二个 Tab，两个 Tab 都带计数，切换用 `AnimatePresence` 微淡入。
+  而是 `/api/ingestion` 的第二个 Tab，两个 Tab 都带计数，切换用 `AnimatePresence` 微淡入。
   搜索框与 `New connection` 只属于 `Connections` Tab。
 - 一级界面的 `Connections` 是**卡片网格**（唯一保留卡片的列表）：`motion.li` 用
   `whileHover={{ y: -2 }}` + `hover:border-border-strong`，整卡是 `Link` 的
@@ -308,8 +309,8 @@ src/
 
 | 路径                                                | 布局 | 左侧内容 | 页面                       |
 | --------------------------------------------------- | ---- | -------- | -------------------------- |
-| `/semantic`                                         | A    | 无       | 模型卡片画廊 + 搜索框      |
-| `/semantic/:modelId?diagram=&entity=&relationship=` | B    | Explorer | Canvas + 底部 Diagram Tabs |
+| `/api/semantic`                                         | A    | 无       | 模型卡片画廊 + 搜索框      |
+| `/api/semantic/:modelId?diagram=&entity=&relationship=` | B    | Explorer | Canvas + 底部 Diagram Tabs |
 
 - **模式 A**（`app/layouts/SemanticLayout.tsx`）：单列 `max-w-6xl` 全宽画廊，
   `pages/semantic-list` 的 `PageHeader` 右侧是 `SearchInput` + `New model`；搜索在模型名称与
@@ -319,7 +320,7 @@ src/
 - **模式 B**（`app/layouts/SemanticWorkspaceLayout.tsx`）：`grid` 上是 Explorer（固
   定 272px）+ Canvas，底部横跨整行的是 `widgets/semantic-diagram-tabs`
   （Excel sheet tabs 风格，`All` 固定在最左并带锁图标）。布局层先读
-  `GET /semantic/models/{id}`：模型不存在就 `replace` 回 `/semantic` 并清掉
+  `GET /semantic/models/{id}`：模型不存在就 `replace` 回 `/api/semantic` 并清掉
   `semantic:lastDiagram:{id}`，避免 Explorer / Tabs / Canvas 各发一次 404。
 - **URL 即状态**：当前 diagram、选中的实体、选中的关系分别是
   `?diagram=` / `?entity=` / `?relationship=`，所以刷新、分享链接、前进后退都还原
@@ -492,16 +493,16 @@ Agent 有两个入口，共享同一个 zustand store（`entities/agent/model/st
 
 | 入口   | 位置                                  | 说明                                                                           |
 | ------ | ------------------------------------- | ------------------------------------------------------------------------------ |
-| 全屏页 | `/agent`、`/agent/:conversationId`    | 左侧会话列表（260px，可折叠）+ 右侧对话区，挂在左侧主导航第一项 `Agent`        |
-| 悬浮窗 | `AppShell` 里的 `AgentFloatingWidget` | 全局可拖拽的圆形按钮 + 弹出面板；在 `/agent*` 上自动隐藏，避免同一会话出现两份 |
+| 全屏页 | `/api/agent`、`/api/agent/:conversationId`    | 左侧会话列表（260px，可折叠）+ 右侧对话区，挂在左侧主导航第一项 `Agent`        |
+| 悬浮窗 | `AppShell` 里的 `AgentFloatingWidget` | 全局可拖拽的圆形按钮 + 弹出面板；在 `/api/agent*` 上自动隐藏，避免同一会话出现两份 |
 
 悬浮窗挂在 `AppShell` 而不是 `App.tsx` 里与 `RouterProvider` 平级：它要"展开至全屏"就得
 `useNavigate()`，而 `RouterProvider` 之外没有 router 上下文；`AppShell` 已经是所有登录后页面的
 外层，效果与"全局组件"一致。
 
-- **路由**：`/agent` 是"当前会话"，`/agent/:conversationId` 是深链；`params.conversationId`
+- **路由**：`/api/agent` 是"当前会话"，`/api/agent/:conversationId` 是深链；`params.conversationId`
   是 source of truth，选中会话时同步改写 URL，因此刷新不会丢上下文。深链指向已删除的会话
-  （`GET .../messages` 回 404）时会清空选中并回到 `/agent`，并提示一句 `toast`。
+  （`GET .../messages` 回 404）时会清空选中并回到 `/api/agent`，并提示一句 `toast`。
 - **流式传输**：`shared/api/sse.ts` 用 `fetch` 读 `text/event-stream`（`EventSource` 既不能
   带 JSON body 也不能带 `Authorization`），`parseSseBuffer` 负责跨 chunk 的帧切分、多行
   `data:` 合并与 `: ping` 注释丢弃；`entities/agent/model/events.ts` 的 `parseAgentEvent`
@@ -620,7 +621,7 @@ Agent 有两个入口，共享同一个 zustand store（`entities/agent/model/st
 
 - `POST /iam/auth/password`、`POST /iam/auth/api-key` 返回
   `{ access_token, session_id, identity_id, user_id, tenant_id, expires_at, refresh_at }`；
-- 之后所有 `/iam/*`（除 `/auth/*`、`/bootstrap`）与 `/comments/*` 请求都带
+- 之后所有 `/api/iam/*`（除 `/auth/*`、`/bootstrap`）与 `/api/comments/*` 请求都带
   `Authorization: Bearer <access_token>`；`catalog`、`semantic`、`vocabulary`、`ingestion`
   目前免鉴权；
 - `POST /iam/auth/refresh` 与 `POST /iam/auth/logout` 没有请求体，靠 bearer 识别会话；
@@ -633,7 +634,7 @@ Agent 有两个入口，共享同一个 zustand store（`entities/agent/model/st
 ### 自动续期
 
 每个会话响应都带 `refresh_at = expires_at - iam.session_refresh_lead_minutes`。提前量由后端
-配置决定（`config.*.yaml`），前端只按 `refresh_at` 设置定时器静默调用 `/iam/auth/refresh`；
+配置决定（`config.*.yaml`），前端只按 `refresh_at` 设置定时器静默调用 `/api/iam/auth/refresh`；
 失败时清空会话，`RequireAuth` 会把用户送回登录页。
 
 ### token 存储
@@ -705,7 +706,7 @@ bg-bg-surface shadow-sm` 的标签页：上下各留 4px、左侧留 12px，右�
 `#f2c811`），未选中为 `text-text-secondary`；没有黄点、没有黄色边条。hover 显示深色 Tooltip 提示
 名称。Discussions 是顶栏图标，IAM 管理台收进顶栏设置菜单（`ADMIN_NAV_ITEMS`）。
 
-顶栏右侧动作行统一 36px（`size-9`，头像按钮 `h-9`），顺序为：Discussions 图标（`/comments`，
+顶栏右侧动作行统一 36px（`size-9`，头像按钮 `h-9`），顺序为：Discussions 图标（`/api/comments`，
 当前路由高亮）→ Settings 齿轮（仅系统管理员显示，Dropdown 内含 Users / Tenants /
 Groups & permissions / Providers / Audit log，当前路由在对应分支时齿轮保持高亮）→ 深浅色切换 →
 用户头像菜单。两个下拉共用 `MENU_PANEL`（白底、`rounded-md`、细边框、`shadow-md`）与 `MENU_MOTION`

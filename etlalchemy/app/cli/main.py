@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 
 from etlalchemy import __version__
+from etlalchemy.app.cli.deploy import deploy
 from etlalchemy.app.cli.iam import iam_app
 from etlalchemy.app.cli.server import run_server
 from etlalchemy.app.config.loader import ConfigError
@@ -19,6 +20,7 @@ app = typer.Typer(
     add_completion=False,
 )
 app.add_typer(iam_app, name="iam")
+app.command(name="deploy")(deploy)
 
 
 def _show_version(value: bool) -> None:

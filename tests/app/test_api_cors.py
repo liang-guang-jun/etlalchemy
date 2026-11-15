@@ -16,7 +16,7 @@ ORIGIN = "http://localhost:5173"
 def test_cors_is_disabled_without_configured_origins(config_dir: Any) -> None:
     """The middleware is not installed when no origin is configured."""
     with TestClient(create_app()) as client:
-        response = client.get("/catalog/catalogs", headers={"Origin": ORIGIN})
+        response = client.get("/api/catalog/catalogs", headers={"Origin": ORIGIN})
 
     assert response.status_code == 200
     assert "access-control-allow-origin" not in response.headers
@@ -31,7 +31,7 @@ def test_cors_answers_a_preflight_for_a_configured_origin(
 
     with TestClient(create_app()) as client:
         response = client.options(
-            "/catalog/catalogs",
+            "/api/catalog/catalogs",
             headers={
                 "Origin": ORIGIN,
                 "Access-Control-Request-Method": "GET",
@@ -52,7 +52,7 @@ def test_cors_rejects_an_unconfigured_origin(
 
     with TestClient(create_app()) as client:
         response = client.get(
-            "/catalog/catalogs",
+            "/api/catalog/catalogs",
             headers={"Origin": "http://evil.example.com"},
         )
 

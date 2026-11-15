@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from dependency_injector.wiring import Provide, inject
@@ -16,10 +17,17 @@ from etlalchemy.app.auth import (
 )
 from etlalchemy.app.bootstrap import Container
 
-__all__ = ["get_auth_session", "get_bearer_token", "get_session_id", "oauth2_scheme"]
+__all__ = [
+    "configure_token_path",
+    "get_auth_session",
+    "get_bearer_token",
+    "get_session_id",
+    "oauth2_scheme",
+    "token_path",
+]
 
 TOKEN_PATH = "/iam/auth/token"
-"""Path of the OAuth2 password grant endpoint, as advertised to Swagger UI."""
+"""Path of the OAuth2 password grant endpoint, relative to the API prefix."""
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=TOKEN_PATH, auto_error=False)
 """Extracts ``Authorization: Bearer`` without parsing the value.
@@ -28,6 +36,39 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl=TOKEN_PATH, auto_error=False)
 same opaque message. Swagger UI reads ``tokenUrl`` from this object to render its
 "Authorize" button.
 """
+
+
+def token_path(prefix: str) -> str:
+    """Returns the login path the Swagger password flow advertises.
+
+    Args:
+        prefix: API prefix the routers are mounted under, for example ``/api``.
+
+    Returns:
+        The login path, for example ``/api/iam/auth/token``.
+    """
+    return f"{prefix}{TOKEN_PATH}"
+
+
+def configure_token_path(prefix: str) -> str:
+    """Points the shared OAuth2 scheme at the prefixed login endpoint.
+
+    The scheme is a module-level object because the route dependencies are
+    wired at import time, so the prefix the application resolves is applied here
+    instead of being baked into :data:`TOKEN_PATH`.
+
+    Args:
+        prefix: API prefix the routers are mounted under, for example ``/api``.
+
+    Returns:
+        The login path the Swagger UI now advertises.
+    """
+    path = token_path(prefix)
+    model: Any = oauth2_scheme.model
+    flows = model.flows
+    if flows.password is not None:
+        flows.password.tokenUrl = path
+    return path
 
 
 def _unauthorized() -> HTTPException:

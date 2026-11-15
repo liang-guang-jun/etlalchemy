@@ -81,11 +81,11 @@ Denied authorizations are recorded as a `Session.AccessDenied` event and land in
 
 | Surface | Token required |
 |---|---|
-| `/iam/*` except `/auth/*`, `/bootstrap`, `/authorize` | yes |
-| `/comments/*` | yes (reads too, unless `read_requires_session: false`) |
-| `/agent/*` | yes |
+| `/api/iam/*` except `/api/iam/auth/*`, `/api/iam/bootstrap`, `/api/iam/authorize` | yes |
+| `/api/comments/*` | yes (reads too, unless `read_requires_session: false`) |
+| `/api/agent/*` | yes |
 | `/mcp` | yes, while `mcp.require_auth` is true (the default) |
-| `/catalog`, `/semantic`, `/vocabulary`, `/ingestion` | **not yet** |
+| `/api/catalog`, `/api/semantic`, `/api/vocabulary`, `/api/ingestion` | **not yet** |
 
 !!! warning "The metadata routes are open"
     `catalog`, `semantic`, `vocabulary` and `ingestion` do not verify a token

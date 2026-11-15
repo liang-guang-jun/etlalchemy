@@ -56,14 +56,14 @@ def login(client: TestClient, email: str, tenant_id: str | None = None) -> dict[
     if tenant_id is not None:
         body["tenant_id"] = tenant_id
     deadline = time.monotonic() + WAIT_TIMEOUT
-    response = client.post("/iam/auth/password", json=body)
+    response = client.post("/api/iam/auth/password", json=body)
     while response.status_code != 200 and time.monotonic() < deadline:
         time.sleep(0.05)
-        response = client.post("/iam/auth/password", json=body)
+        response = client.post("/api/iam/auth/password", json=body)
     assert response.status_code == 200, response.text
     headers = {"Authorization": f"Bearer {response.json()['access_token']}"}
     wait_for(
-        lambda: client.get("/iam/sessions/current", headers=headers).status_code == 200,
+        lambda: client.get("/api/iam/sessions/current", headers=headers).status_code == 200,
     )
     return headers
 
@@ -77,9 +77,9 @@ def test_session_response_exposes_the_configured_refresh_lead(
     seed_admin("lead@example.com")
 
     with TestClient(create_app()) as client:
-        wait_for(lambda: client.get("/iam/bootstrap").json()["completed"])
+        wait_for(lambda: client.get("/api/iam/bootstrap").json()["completed"])
         headers = login(client, "lead@example.com")
-        current = client.get("/iam/sessions/current", headers=headers).json()
+        current = client.get("/api/iam/sessions/current", headers=headers).json()
 
     expires_at = datetime.fromisoformat(current["expires_at"])
     refresh_at = datetime.fromisoformat(current["refresh_at"])
@@ -91,17 +91,17 @@ def test_login_bootstrap_and_authorize(config_dir: Any) -> None:
     seed_admin("root@example.com")
 
     with TestClient(create_app()) as client:
-        wait_for(lambda: client.get("/iam/bootstrap").json()["completed"])
+        wait_for(lambda: client.get("/api/iam/bootstrap").json()["completed"])
         headers = login(client, "root@example.com")
         login_response = client.post(
-            "/iam/auth/password",
+            "/api/iam/auth/password",
             json={"login": "root@example.com", "password": PASSWORD},
         )
         assert login_response.json()["token_type"] == "bearer"
         assert login_response.json()["access_token"].startswith("iam_sess_")
 
         authorized = client.post(
-            "/iam/authorize",
+            "/api/iam/authorize",
             json={"obj": "anything", "act": "read"},
             headers=headers,
         )
@@ -109,7 +109,7 @@ def test_login_bootstrap_and_authorize(config_dir: Any) -> None:
         assert authorized.json() == {"allowed": True}
 
         wrong = client.post(
-            "/iam/auth/password",
+            "/api/iam/auth/password",
             json={"login": "root@example.com", "password": "nope"},
         )
         assert wrong.status_code == 401
@@ -120,36 +120,36 @@ def test_tenant_and_member_routes(config_dir: Any) -> None:
     seed_admin("root@example.com")
 
     with TestClient(create_app()) as client:
-        wait_for(lambda: client.get("/iam/bootstrap").json()["completed"])
+        wait_for(lambda: client.get("/api/iam/bootstrap").json()["completed"])
         headers = login(client, "root@example.com")
 
         created = client.post(
-            "/iam/tenants",
+            "/api/iam/tenants",
             json={"name": "acme", "description": "Acme"},
             headers=headers,
         )
         assert created.status_code == 201, created.text
         tenant_id = created.json()["tenant_id"]
 
-        listed = wait_for(lambda: client.get("/iam/tenants", headers=headers).json())
+        listed = wait_for(lambda: client.get("/api/iam/tenants", headers=headers).json())
         assert [tenant["name"] for tenant in listed] == ["acme"]
 
         user = client.post(
-            "/iam/users",
+            "/api/iam/users",
             json={"username": "alice", "email": "alice@example.com"},
             headers=headers,
         )
         assert user.status_code == 201, user.text
         user_id = user.json()["user_id"]
         identity = client.post(
-            f"/iam/users/{user_id}/identities/password",
+            f"/api/iam/users/{user_id}/identities/password",
             json={"password": PASSWORD},
             headers=headers,
         )
         assert identity.status_code == 201, identity.text
 
         added = client.post(
-            f"/iam/tenants/{tenant_id}/members",
+            f"/api/iam/tenants/{tenant_id}/members",
             json={"user_id": user_id},
             headers=headers,
         )
@@ -157,14 +157,14 @@ def test_tenant_and_member_routes(config_dir: Any) -> None:
 
         members = wait_for(
             lambda: client.get(
-                f"/iam/tenants/{tenant_id}/members",
+                f"/api/iam/tenants/{tenant_id}/members",
                 headers=headers,
             ).json(),
         )
         assert [member["username"] for member in members] == ["alice"]
 
         renamed = client.patch(
-            f"/iam/tenants/{tenant_id}",
+            f"/api/iam/tenants/{tenant_id}",
             json={"description": "Acme Corp"},
             headers=headers,
         )
@@ -176,41 +176,41 @@ def test_group_permission_is_enforced_over_http(config_dir: Any) -> None:
     seed_admin("root@example.com")
 
     with TestClient(create_app()) as client:
-        wait_for(lambda: client.get("/iam/bootstrap").json()["completed"])
+        wait_for(lambda: client.get("/api/iam/bootstrap").json()["completed"])
         root_headers = login(client, "root@example.com")
         tenant_id = client.post(
-            "/iam/tenants",
+            "/api/iam/tenants",
             json={"name": "acme"},
             headers=root_headers,
         ).json()["tenant_id"]
         user_id = client.post(
-            "/iam/users",
+            "/api/iam/users",
             json={"username": "alice", "email": "alice@example.com"},
             headers=root_headers,
         ).json()["user_id"]
         client.post(
-            f"/iam/users/{user_id}/identities/password",
+            f"/api/iam/users/{user_id}/identities/password",
             json={"password": PASSWORD},
             headers=root_headers,
         )
         client.post(
-            f"/iam/tenants/{tenant_id}/members",
+            f"/api/iam/tenants/{tenant_id}/members",
             json={"user_id": user_id},
             headers=root_headers,
         )
         parent_id = client.post(
-            f"/iam/tenants/{tenant_id}/groups",
+            f"/api/iam/tenants/{tenant_id}/groups",
             json={"name": "analysts"},
             headers=root_headers,
         ).json()["group_id"]
         child_id = client.post(
-            f"/iam/tenants/{tenant_id}/groups",
+            f"/api/iam/tenants/{tenant_id}/groups",
             json={"name": "reporting", "parent_group_id": parent_id},
             headers=root_headers,
         ).json()["group_id"]
         assert (
             client.post(
-                f"/iam/tenants/{tenant_id}/groups/{parent_id}/permissions",
+                f"/api/iam/tenants/{tenant_id}/groups/{parent_id}/permissions",
                 json={"obj": "doc", "act": "read"},
                 headers=root_headers,
             ).status_code
@@ -218,7 +218,7 @@ def test_group_permission_is_enforced_over_http(config_dir: Any) -> None:
         )
         assert (
             client.post(
-                f"/iam/groups/{child_id}/members",
+                f"/api/iam/groups/{child_id}/members",
                 json={"member_id": user_id},
                 headers=root_headers,
             ).status_code
@@ -229,14 +229,14 @@ def test_group_permission_is_enforced_over_http(config_dir: Any) -> None:
 
         allowed = wait_for(
             lambda: client.post(
-                "/iam/authorize",
+                "/api/iam/authorize",
                 json={"obj": "doc", "act": "read"},
                 headers=headers,
             ).json()["allowed"],
         )
         assert allowed is True
         denied = client.post(
-            "/iam/authorize",
+            "/api/iam/authorize",
             json={"obj": "doc", "act": "write"},
             headers=headers,
         )
@@ -246,14 +246,14 @@ def test_group_permission_is_enforced_over_http(config_dir: Any) -> None:
 def test_missing_token_is_unauthorized(config_dir: Any) -> None:
     """A protected route rejects a request without a bearer token."""
     with TestClient(create_app()) as client:
-        response = client.post("/iam/tenants", json={"name": "acme"})
+        response = client.post("/api/iam/tenants", json={"name": "acme"})
 
         assert response.status_code == 401
         assert response.headers["WWW-Authenticate"] == "Bearer"
         assert response.json() == {"detail": "invalid or expired token"}
 
         unknown = client.post(
-            "/iam/tenants",
+            "/api/iam/tenants",
             json={"name": "acme"},
             headers={"Authorization": "Bearer iam_sess_00000000-0000-0000-0000-000000000001"},
         )
@@ -266,27 +266,27 @@ def test_mention_search_is_open_to_any_signed_in_user(config_dir: Any) -> None:
     seed_admin("root@example.com")
 
     with TestClient(create_app()) as client:
-        wait_for(lambda: client.get("/iam/bootstrap").json()["completed"])
+        wait_for(lambda: client.get("/api/iam/bootstrap").json()["completed"])
         admin = login(client, "root@example.com")
         created = client.post(
-            "/iam/users",
+            "/api/iam/users",
             json={"username": "alice", "email": "alice@example.com"},
             headers=admin,
         )
         assert created.status_code == 201, created.text
         user_id = created.json()["user_id"]
         client.post(
-            f"/iam/users/{user_id}/identities/password",
+            f"/api/iam/users/{user_id}/identities/password",
             json={"password": PASSWORD},
             headers=admin,
         )
         member = login(client, "alice")
 
-        assert client.get("/iam/users", headers=member).status_code == 403
+        assert client.get("/api/iam/users", headers=member).status_code == 403
 
         hits = wait_for(
             lambda: client.get(
-                "/iam/users/search", params={"term": "ali"}, headers=member
+                "/api/iam/users/search", params={"term": "ali"}, headers=member
             ).json()
             or None
         )
@@ -294,19 +294,19 @@ def test_mention_search_is_open_to_any_signed_in_user(config_dir: Any) -> None:
         assert set(hits[0]) == {"user_id", "username", "display_name"}
 
         exact = client.get(
-            "/iam/users/search", params={"term": "alice@example.com"}, headers=member
+            "/api/iam/users/search", params={"term": "alice@example.com"}, headers=member
         ).json()
         assert [hit["user_id"] for hit in exact] == [user_id]
         assert exact[0]["display_name"] == "alice"
 
         assert (
-            client.get("/iam/users/search", params={"term": "zzz"}, headers=member).json() == []
+            client.get("/api/iam/users/search", params={"term": "zzz"}, headers=member).json() == []
         )
 
         # A bare `@` sends no term at all: the endpoint then answers the first users.
-        everyone = client.get("/iam/users/search", headers=member)
+        everyone = client.get("/api/iam/users/search", headers=member)
         assert everyone.status_code == 200, everyone.text
         assert {hit["username"] for hit in everyone.json()} == {"alice", "root@example.com"}
-        assert len(client.get("/iam/users/search", params={"term": ""}, headers=member).json()) == 2
+        assert len(client.get("/api/iam/users/search", params={"term": ""}, headers=member).json()) == 2
 
-        assert client.get("/iam/users/search", params={"term": "a"}).status_code == 401
+        assert client.get("/api/iam/users/search", params={"term": "a"}).status_code == 401
