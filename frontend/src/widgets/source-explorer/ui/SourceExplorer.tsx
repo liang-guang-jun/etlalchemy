@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import { ChevronRight, Database, Folder, Loader2, Table2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
@@ -21,7 +21,7 @@ interface RowProps {
   depth: number;
   icon: ReactNode;
   open?: boolean;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   trailing?: ReactNode;
 }
 
@@ -156,8 +156,9 @@ function SchemaNode({
         depth={depth}
         icon={<Folder className="size-3.5" aria-hidden="true" />}
         open={open}
-        onClick={() => {
+        onClick={(event) => {
           setOpen((value) => !value);
+          event.currentTarget.scrollIntoView({ block: 'nearest' });
         }}
         trailing={
           <span className="flex items-center gap-2">
@@ -275,8 +276,9 @@ function CatalogNode({
         depth={0}
         icon={<Database className="size-3.5" aria-hidden="true" />}
         open={open}
-        onClick={() => {
+        onClick={(event) => {
           setOpen((value) => !value);
+          event.currentTarget.scrollIntoView({ block: 'nearest' });
         }}
       />
       <AnimatePresence initial={false}>
@@ -323,7 +325,8 @@ function CatalogNode({
  * Renders the explorable catalogs of one source connection.
  *
  * Every level is loaded on demand through the inspect route, so a large source
- * costs nothing until it is opened.
+ * costs nothing until it is opened. The tree fills the height its host gives it
+ * and scrolls inside, so a deep structure never grows the surrounding page.
  *
  * @param props Component props.
  * @returns The explorer panel.
@@ -335,40 +338,40 @@ export function SourceExplorer({
   onToggleSchema,
 }: SourceExplorerProps) {
   const catalogs = useSourceInspect(connectionId, {});
-
-  if (catalogs.isPending) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-4 text-sm text-text-secondary">
-        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-        Connecting to the source…
-      </div>
-    );
-  }
-  if (catalogs.isError) {
-    return (
-      <p className="px-3 py-4 text-sm text-danger">
-        {catalogs.error instanceof Error ? catalogs.error.message : 'The source did not answer'}
-      </p>
-    );
-  }
-
   const items = catalogs.data?.items ?? [];
-  if (items.length === 0) {
-    return <p className="px-3 py-4 text-sm text-text-disabled">The source exposes no catalog.</p>;
-  }
 
   return (
-    <ul className="py-1">
-      {items.map((item) => (
-        <CatalogNode
-          key={item.name}
-          connectionId={connectionId}
-          catalog={item.name}
-          selected={selected}
-          onToggleTable={onToggleTable}
-          onToggleSchema={onToggleSchema}
-        />
-      ))}
-    </ul>
+    <div className="flex h-full min-h-0 flex-col">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1"
+        aria-label="Source tree"
+      >
+        {catalogs.isPending ? (
+          <div className="flex items-center gap-2 px-3 py-4 text-sm text-text-secondary">
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            Connecting to the source…
+          </div>
+        ) : catalogs.isError ? (
+          <p className="px-3 py-4 text-sm text-danger">
+            {catalogs.error instanceof Error ? catalogs.error.message : 'The source did not answer'}
+          </p>
+        ) : items.length === 0 ? (
+          <p className="px-3 py-4 text-sm text-text-disabled">The source exposes no catalog.</p>
+        ) : (
+          <ul>
+            {items.map((item) => (
+              <CatalogNode
+                key={item.name}
+                connectionId={connectionId}
+                catalog={item.name}
+                selected={selected}
+                onToggleTable={onToggleTable}
+                onToggleSchema={onToggleSchema}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }

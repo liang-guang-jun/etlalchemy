@@ -109,6 +109,14 @@ table column `created_at` is what the UI shows as *Started*.
 `json` by default. Use `options.type_policy` (`fail`, `json`, `skip`) or
 `options.type_overrides` to change it.
 
+**Browsing a Databricks source is slow.** The adapter leases one
+`WorkspaceClient` per endpoint and credential instead of authenticating on every
+request (`options.client_cache_ttl_seconds`, default `900`), caches each inspected
+level briefly (`options.metadata_cache_ttl`, default `30`, `0` disables it), asks
+`tables.list` for names only and pages `options.page_size` rows at a time (default
+`200`). `options.http_timeout_seconds` and `options.retry_timeout_seconds` bound a
+slow Unity Catalog call instead of letting it hang the request.
+
 **The run says `abandoned`.** A run that never finished can be abandoned
 explicitly; it is terminal and keeps its reason.
 

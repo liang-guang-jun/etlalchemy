@@ -266,7 +266,7 @@ export default function ImportWizardPage() {
 
       <StepIndicator step={step} />
 
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={step}
@@ -328,7 +328,7 @@ export default function ImportWizardPage() {
                   renamed in the target catalog on the right.
                 </p>
                 <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
-                  <div className="min-h-0 overflow-y-auto rounded-lg border border-border-base bg-bg-surface">
+                  <div className="min-h-0 overflow-hidden rounded-lg border border-border-base bg-bg-surface">
                     <SourceExplorer
                       connectionId={connectionId}
                       selected={selectedKeys}

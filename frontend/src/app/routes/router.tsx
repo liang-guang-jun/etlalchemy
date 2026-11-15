@@ -7,6 +7,7 @@ import { IngestionLayout } from '@/app/layouts/IngestionLayout';
 import { SemanticLayout } from '@/app/layouts/SemanticLayout';
 import { SemanticWorkspaceLayout } from '@/app/layouts/SemanticWorkspaceLayout';
 import { VocabularyLayout } from '@/app/layouts/VocabularyLayout';
+import { WorkspaceLayout } from '@/app/layouts/WorkspaceLayout';
 import { RequireAdmin, RequireAuth } from '@/app/routes/guards';
 import { lazyPage } from '@/app/routes/lazy';
 
@@ -93,11 +94,14 @@ export const router = createBrowserRouter([
             path: ':connectionId',
             element: lazyPage(() => import('@/pages/ingestion-detail/page')),
           },
-          {
-            path: ':connectionId/new-import',
-            element: lazyPage(() => import('@/pages/import-wizard/page')),
-          },
         ],
+      },
+      // The wizard is a workspace of its own: its explorer and selection panes
+      // scroll inside the card, so the frame must not scroll as a page.
+      {
+        path: 'ingestion/:connectionId/new-import',
+        element: <WorkspaceLayout />,
+        children: [{ index: true, element: lazyPage(() => import('@/pages/import-wizard/page')) }],
       },
       {
         path: 'iam/users',

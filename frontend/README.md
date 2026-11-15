@@ -288,7 +288,11 @@ src/
   2. 左树 `widgets/source-explorer` 逐层懒加载 `GET /ingestion/connections/{id}/inspect`
      （catalogs → schemas → tables），展开用 `motion.ul` 动画 `height: 0 → auto`，
      Loading 行带 `Loader2` 旋转；每个表前是自绘 checkbox（`whileTap={{ scale: 0.8 }}`），
-     勾 schema 会级联选中它已加载的所有表（父节点显示 `mixed` 态）。右侧
+     勾 schema 会级联选中它已加载的所有表（父节点显示 `mixed` 态）。向导路由挂在
+     `app/layouts/WorkspaceLayout`（固定高度、不整体滚动）下，所以左树是
+     `h-full` + `min-h-0 flex-1 overflow-y-auto` 的独立滚动区（`aria-label="Source tree"`），
+     数据结构再深也不会把页面撑高，展开某一行时会 `scrollIntoView({ block: 'nearest' })`
+     把它留在视野内。右侧
      `ImportSelectionPanel` 按源 schema 分组，每组的 `Target schema` 输入框对应
      `schema_mapping`，已选表是带 `layout` 的 chip，可单个移除或 `Clear`；
   3. 确认步调用 `POST /ingestion/connections/{id}/plan` 预览：schema/table/field 三个大数字、
