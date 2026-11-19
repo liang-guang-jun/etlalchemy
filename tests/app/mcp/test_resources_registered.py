@@ -1,6 +1,7 @@
 """Tests for the resource surface of the catalog MCP server."""
 
 from etlalchemy.app.mcp.server import MCPServer
+
 from tests.app.mcp.support import list_resource_templates, list_resources
 
 EXPECTED_TEMPLATES = {

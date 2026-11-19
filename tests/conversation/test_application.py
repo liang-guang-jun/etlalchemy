@@ -6,7 +6,6 @@ import asyncio
 from uuid import uuid4
 
 import pytest
-
 from etlalchemy.conversation.aggregates.errors import (
     RunInProgressError,
     UnknownConversationError,
@@ -16,8 +15,9 @@ from etlalchemy.conversation.aggregates.types import (
     TokenUsage,
     ToolCallRecord,
 )
-from etlalchemy.iam.aggregates.errors import PermissionDeniedError
 from etlalchemy.conversation.application import ConversationOptions
+from etlalchemy.iam.aggregates.errors import PermissionDeniedError
+
 from tests.conversation.support import FakeAuthorization, running_conversation
 
 TENANT = uuid4()

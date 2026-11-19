@@ -6,7 +6,6 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
-
 from etlalchemy.app.bootstrap import Container, run_container
 from etlalchemy.app.mcp.server import MCPServer
 

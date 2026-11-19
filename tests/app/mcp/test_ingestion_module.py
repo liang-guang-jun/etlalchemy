@@ -9,11 +9,11 @@ from uuid import uuid4
 
 import pytest
 from dependency_injector import providers
-
 from etlalchemy.app.bootstrap import Container, run_container
 from etlalchemy.app.mcp.server import MCPServer
 from etlalchemy.ingestion.aggregates.import_run import ImportRun
 from etlalchemy.ingestion.ports.data_source import ColumnInfo
+
 from tests.app.mcp.support import (
     call_tool,
     list_prompts,
@@ -69,7 +69,7 @@ async def test_ingestion_tools_are_registered(server: MCPServer) -> None:
     """The ingestion commands and parameterised reads are exposed."""
     names = {tool.name for tool in await list_tools(server)}
 
-    assert INGESTION_TOOLS <= names
+    assert names >= INGESTION_TOOLS
 
 
 async def test_local_source_profiles_are_listed(

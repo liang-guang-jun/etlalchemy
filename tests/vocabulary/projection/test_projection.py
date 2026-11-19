@@ -7,9 +7,9 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-
 from etlalchemy.vocabulary.application import VocabularyApplication
 from etlalchemy.vocabulary.projection.projection import run_vocabulary_projection
+
 from tests.support import async_env, sqlite_url
 from tests.vocabulary.support import FakeCatalogView
 

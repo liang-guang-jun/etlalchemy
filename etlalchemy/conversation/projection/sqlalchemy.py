@@ -14,13 +14,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from eventsourcing.asyncio.sqlalchemy import (
-    AsyncSQLAlchemyDatastore,
-    AsyncSQLAlchemyTrackingRecorder,
-)
-from sqlalchemy import Select, delete, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
+from sqlalchemy import delete, select, update
 
 from etlalchemy.conversation.projection.tables import (
     conversation_approvals,
@@ -41,40 +36,37 @@ from etlalchemy.conversation.projection.view import (
     ToolCallRow,
     as_uuid,
 )
+from etlalchemy.shared.persistence import AsyncCoreView, ensure_column
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from eventsourcing.persistence import Tracking
     from sqlalchemy import Table
 
 
-class SQLAlchemyConversationView(AsyncSQLAlchemyTrackingRecorder, ConversationView):
+class SQLAlchemyConversationView(AsyncCoreView, ConversationView):
     """Asynchronous materialised view of the conversation aggregate."""
 
-    async def create_table(self) -> None:
-        """Creates the tracking table and the view tables if they do not exist."""
-        async with self.datastore.transaction() as conn:
-            await conn.run_sync(metadata.create_all)
-            await conn.run_sync(self.datastore.metadata.create_all)
-            await self._ensure_agent_columns(conn)
+    view_metadata = metadata
 
-    async def _ensure_agent_columns(self, conn: Any) -> None:
+    async def migrate(self, conn: Any) -> None:
         """Adds the reasoning and tool preview columns to an older read model."""
-        await self._ensure_column(
+        await ensure_column(
             conn,
+            self.datastore.dialect_name,
             "conversation_messages",
             "reasoning",
             "TEXT NOT NULL DEFAULT ''",
         )
-        await self._ensure_column(
+        await ensure_column(
             conn,
+            self.datastore.dialect_name,
             "conversation_message_tools",
             "args_json",
             "TEXT NOT NULL DEFAULT ''",
         )
-        await self._ensure_column(
+        await ensure_column(
             conn,
+            self.datastore.dialect_name,
             "conversation_message_tools",
             "result_preview",
             "TEXT NOT NULL DEFAULT ''",
@@ -105,30 +97,6 @@ class SQLAlchemyConversationView(AsyncSQLAlchemyTrackingRecorder, ConversationVi
             f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}"
         )
 
-    def _insert(self, table: Table) -> Any:
-        """Returns the upsert construct of the configured dialect."""
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            return sqlite_insert(table)
-        return pg_insert(table)
-
-    async def _write(self, statements: Sequence[Any], tracking: Tracking) -> None:
-        """Applies the statements and records the tracking row atomically."""
-        async with self.transaction() as conn:
-            for statement in statements:
-                await conn.execute(statement)
-            await self.insert_tracking_in_transaction(conn, tracking)
-
-    async def _fetch_all(self, statement: Select[Any]) -> Sequence[Any]:
-        """Executes a read statement and returns all rows."""
-        async with self.datastore.connection() as conn:
-            rows: Sequence[Any] = (await conn.execute(statement)).all()
-            return rows
-
-    async def _fetch_one(self, statement: Select[Any]) -> Any:
-        """Executes a read statement and returns the first row, or ``None``."""
-        async with self.datastore.connection() as conn:
-            return (await conn.execute(statement)).first()
-
     # -- writes -------------------------------------------------------------
 
     async def register_conversation(
@@ -142,7 +110,7 @@ class SQLAlchemyConversationView(AsyncSQLAlchemyTrackingRecorder, ConversationVi
         tracking: Tracking,
     ) -> None:
         """Registers a conversation, clearing a previous discarded marker."""
-        statement = self._insert(conversation_conversations).values(
+        statement = self._dialect_insert(conversation_conversations).values(
             conversation_id=conversation_id,
             user_id=user_id,
             tenant_id=tenant_id,
@@ -204,7 +172,7 @@ class SQLAlchemyConversationView(AsyncSQLAlchemyTrackingRecorder, ConversationVi
         tracking: Tracking,
     ) -> None:
         """Registers a message without a trace and bumps the activity pointer."""
-        insert = self._insert(conversation_messages).values(
+        insert = self._dialect_insert(conversation_messages).values(
             message_id=message_id,
             conversation_id=conversation_id,
             role=role,
@@ -299,7 +267,7 @@ class SQLAlchemyConversationView(AsyncSQLAlchemyTrackingRecorder, ConversationVi
         tracking: Tracking,
     ) -> None:
         """Registers an assistant message with its whole trace."""
-        insert = self._insert(conversation_messages).values(
+        insert = self._dialect_insert(conversation_messages).values(
             message_id=message_id,
             conversation_id=conversation_id,
             role=role,
@@ -322,7 +290,7 @@ class SQLAlchemyConversationView(AsyncSQLAlchemyTrackingRecorder, ConversationVi
         )
         statements: list[Any] = [statement]
         statements.extend(
-            self._insert(conversation_message_resources).values(
+            self._dialect_insert(conversation_message_resources).values(
                 message_id=message_id,
                 ordinal=index,
                 uri=resource.uri,
@@ -333,7 +301,7 @@ class SQLAlchemyConversationView(AsyncSQLAlchemyTrackingRecorder, ConversationVi
             for index, resource in enumerate(resources)
         )
         statements.extend(
-            self._insert(conversation_message_tools).values(
+            self._dialect_insert(conversation_message_tools).values(
                 message_id=message_id,
                 ordinal=index,
                 tool=call.tool,
@@ -372,7 +340,7 @@ class SQLAlchemyConversationView(AsyncSQLAlchemyTrackingRecorder, ConversationVi
         tracking: Tracking,
     ) -> None:
         """Registers a running agent run."""
-        insert = self._insert(conversation_runs).values(
+        insert = self._dialect_insert(conversation_runs).values(
             run_id=run_id,
             conversation_id=conversation_id,
             message_id=message_id,
@@ -408,7 +376,7 @@ class SQLAlchemyConversationView(AsyncSQLAlchemyTrackingRecorder, ConversationVi
         tracking: Tracking,
     ) -> None:
         """Registers a pending approval."""
-        insert = self._insert(conversation_approvals).values(
+        insert = self._dialect_insert(conversation_approvals).values(
             approval_id=approval_id,
             run_id=run_id,
             conversation_id=conversation_id,

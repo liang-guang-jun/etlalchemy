@@ -6,7 +6,6 @@ from contextlib import AsyncExitStack
 from typing import Any
 
 import pytest
-
 from etlalchemy.agent.mcp.client import HttpConnector, McpClient, build_http_client
 
 
@@ -51,12 +50,13 @@ async def test_sessions_outside_a_lifespan_are_independent(
 
 async def test_the_runner_opens_one_session_per_run(client: tuple[McpClient, list[int]]) -> None:
     """A run enters the lifespan exactly once."""
-    from langchain_core.messages import AIMessage
+    from uuid import uuid4
 
     from etlalchemy.agent.runtime import AgentRunner, RunRequest
     from etlalchemy.agent.settings import AgentRuntimeSettings
+    from langchain_core.messages import AIMessage
+
     from tests.agent.support import FakeConversation, FakeMcpClient, RecordingModel
-    from uuid import uuid4
 
     transport = FakeMcpClient()
 

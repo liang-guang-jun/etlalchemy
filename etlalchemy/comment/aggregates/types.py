@@ -7,6 +7,16 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
+from etlalchemy.shared.utils import DEFAULT_TARGET_TYPES as DEFAULT_TARGET_TYPES
+
+"""Target types a comment thread accepts out of the box.
+
+Every entry is addressable by a UUID: catalog fields and semantic entities carry
+their own identity now, so a discussion can hang off them. Diagrams are still
+keyed by name inside their model and stay out of the registry; a thread
+references its target by ``(target_type, target_id)`` only.
+"""
+
 
 class ThreadStatus(StrEnum):
     """Lifecycle status of a comment thread."""
@@ -21,24 +31,13 @@ class ThreadStatus(StrEnum):
     """The thread is soft-deleted and rejects every command."""
 
 
-DEFAULT_TARGET_TYPES: frozenset[str] = frozenset(
-    {
-        "catalog",
-        "schema",
-        "table",
-        "field",
-        "semantic_model",
-        "semantic_entity",
-        "relationship",
-        "domain",
-        "term",
-        "ingestion_connection",
-        "import_run",
-        "tenant",
-        "user",
-        "group",
-    },
-)
+"""Target types a comment thread accepts out of the box.
+
+Every entry is addressable by a UUID: catalog fields and semantic entities carry
+their own identity now, so a discussion can hang off them. Diagrams are still
+keyed by name inside their model and stay out of the registry; a thread
+references its target by ``(target_type, target_id)`` only.
+"""
 """Target types declared out of the box.
 
 Every entry is addressable by a UUID: catalog fields and semantic entities carry

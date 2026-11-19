@@ -3,8 +3,6 @@
 from uuid import uuid4
 
 import pytest
-from eventsourcing.application import AggregateNotFoundError
-
 from etlalchemy.catalog import Catalog, CatalogApplication, DuplicateSchemaError
 from etlalchemy.catalog.aggregates.errors import (
     DuplicateFieldError,
@@ -14,6 +12,7 @@ from etlalchemy.catalog.aggregates.errors import (
 from etlalchemy.catalog.aggregates.schema import Schema
 from etlalchemy.catalog.aggregates.table import Table
 from etlalchemy.catalog.aggregates.types import DataType
+from eventsourcing.application import AggregateNotFoundError
 
 
 @pytest.fixture

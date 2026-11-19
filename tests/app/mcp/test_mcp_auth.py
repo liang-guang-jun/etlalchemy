@@ -11,17 +11,16 @@ from uuid import UUID, uuid4
 
 import httpx2
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from fastmcp import Client
-from fastmcp.client.transports import StreamableHttpTransport
-from mcp.shared.exceptions import MCPError
-
 from etlalchemy.app.auth import AuthSession, InvalidTokenError
 from etlalchemy.app.bootstrap import Container
 from etlalchemy.app.mcp.auth import IamTokenVerifier
 from etlalchemy.app.mcp.server import MCPServer
 from etlalchemy.iam.aggregates.types import Permission
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
+from mcp.shared.exceptions import MCPError
 
 MCP_PATH = "/mcp"
 PASSWORD = "correct-horse-battery"
@@ -220,9 +219,8 @@ async def test_a_mounted_tool_runs_with_a_valid_token(container: Container) -> N
     server = MCPServer(container, require_auth=True)
     app = server.mcp.http_app(path=MCP_PATH)
 
-    async with app.router.lifespan_context(app):
-        async with _asgi_client(app, token) as client:
-            created = await client.call_tool("create_catalog", {"name": "authorized"})
+    async with app.router.lifespan_context(app), _asgi_client(app, token) as client:
+        created = await client.call_tool("create_catalog", {"name": "authorized"})
 
     assert created.structured_content is not None
     wait_for_catalog = await wait_for(

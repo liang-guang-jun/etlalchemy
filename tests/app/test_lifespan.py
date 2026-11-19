@@ -6,9 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from dependency_injector import providers
-from fastapi.testclient import TestClient
-
 from etlalchemy.app.api.app import create_app
+from fastapi.testclient import TestClient
 
 
 class _FakeRunner:

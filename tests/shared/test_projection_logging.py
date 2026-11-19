@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 import pytest
+from etlalchemy.shared.logging import reset_logging
+from etlalchemy.shared.projection import AsyncLoggedProjection
 from eventsourcing.dispatch import singledispatchmethod
 from eventsourcing.domain import DomainEvent
 from eventsourcing.persistence import Tracking
 from eventsourcing.utils import get_topic
 from structlog.testing import capture_logs
-
-from etlalchemy.shared.logging import reset_logging
-from etlalchemy.shared.projection import AsyncLoggedProjection
 
 
 class OtherEvent(DomainEvent):
@@ -57,7 +56,7 @@ def make_event() -> OtherEvent:
     return OtherEvent(
         originator_id=uuid4(),
         originator_version=1,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
     )
 
 
@@ -109,7 +108,7 @@ async def test_unhandled_event_is_logged_without_failing() -> None:
     event = DomainEvent(
         originator_id=uuid4(),
         originator_version=1,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
     )
 
     with capture_logs() as logs:

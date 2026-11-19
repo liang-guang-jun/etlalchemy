@@ -7,7 +7,6 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-
 from etlalchemy.app.auth.authenticator import SessionAuthenticator
 from etlalchemy.app.auth.errors import InvalidTokenError
 from etlalchemy.app.auth.session import AuthSession

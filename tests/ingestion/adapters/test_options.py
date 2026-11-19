@@ -4,7 +4,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-
 from etlalchemy.ingestion.adapters._options import (
     bool_option,
     int_option,

@@ -6,9 +6,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi.testclient import TestClient
-
 from etlalchemy.app.api.app import create_app
+from fastapi.testclient import TestClient
 
 WAIT_TIMEOUT = 10.0
 

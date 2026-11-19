@@ -7,10 +7,9 @@ from collections.abc import Callable
 from uuid import UUID, uuid4
 
 import pytest
-from eventsourcing.persistence import Tracking
-
 from etlalchemy.semantic.aggregates.types import ALL_DIAGRAM
 from etlalchemy.semantic.projection.sqlalchemy import SQLAlchemySemanticView
+from eventsourcing.persistence import Tracking
 
 UPSTREAM = "semantic-application"
 

@@ -5,11 +5,11 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from etlalchemy.ingestion.projection.sqlalchemy import SQLAlchemyIngestionView
+from etlalchemy.ingestion.projection.view import ConnectionRow, ImportRunRow
 from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from eventsourcing.persistence import IntegrityError, Tracking
 
-from etlalchemy.ingestion.projection.sqlalchemy import SQLAlchemyIngestionView
-from etlalchemy.ingestion.projection.view import ConnectionRow, ImportRunRow
 from tests.support import sqlite_url
 
 UPSTREAM = "ingestion-application"

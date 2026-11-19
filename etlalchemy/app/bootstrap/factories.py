@@ -8,7 +8,7 @@ without a container.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -62,6 +62,9 @@ from etlalchemy.vocabulary.projection.sqlalchemy import SQLAlchemyVocabularyView
 Datastore = AsyncSQLAlchemyDatastore
 """Asynchronous datastore shared by the event stores and the read models."""
 
+SHARED_SCOPE = "shared"
+"""Selector key of a context that reuses the global datastore."""
+
 CIPHER_TOPIC = "eventsourcing.cipher:AESCipher"
 """Topic of the AES cipher that eventsourcing instantiates from CIPHER_KEY."""
 
@@ -92,10 +95,18 @@ def build_datastore(database: DatabaseSettings) -> AsyncSQLAlchemyDatastore:
 
 
 async def datastore_lifecycle(datastore: Datastore) -> AsyncIterator[None]:
-    """Disposes the datastore engine when the container shuts down.
+    """Disposes the global datastore engine when the container shuts down.
 
     The datastore itself is a synchronous singleton so it can be injected into
-    synchronous providers; this resource only owns its shutdown.
+    synchronous providers; this resource only owns its shutdown. Contexts reuse
+    this engine through :func:`context_datastore_lifecycle`, which never closes
+    it, so it is disposed exactly once.
+
+    Args:
+        datastore: The datastore this resource owns.
+
+    Yields:
+        Nothing; the engine is disposed when the resource shuts down.
     """
     try:
         yield None
@@ -103,164 +114,121 @@ async def datastore_lifecycle(datastore: Datastore) -> AsyncIterator[None]:
         await datastore.close()
 
 
-class CatalogViewFactory:
+async def context_datastore_lifecycle(
+    datastore: Datastore,
+    scope: str,
+) -> AsyncIterator[None]:
+    """Disposes a context datastore only when the context owns it.
+
+    A context defaults to the global datastore, whose lifecycle the container
+    already owns, so closing it here would dispose one engine once per context.
+    ``providers.Selector`` cannot express that: it tears down every branch at
+    shutdown, including the branch it never took, so the decision is made here
+    from the resolved scope instead.
+
+    Args:
+        datastore: The datastore the context resolved.
+        scope: ``shared`` when the context reuses the global datastore.
+
+    Yields:
+        Nothing; a dedicated engine is disposed when the resource shuts down.
+    """
+    try:
+        yield None
+    finally:
+        if scope != SHARED_SCOPE:
+            await datastore.close()
+
+
+class ViewFactory:
+    """Builds one context's read model and hosts its projection resource.
+
+    The eight contexts differ only in the view class and the runner factory, so
+    a subclass names those two and inherits everything else.
+    """
+
+    view_class: type[Any]
+    """Async view built on the context's datastore."""
+
+    runner_factory: Callable[[dict[str, str]], Any]
+    """Returns the unstarted projection runner of the context."""
+
+    @classmethod
+    def build(cls, datastore: Datastore, tracking_table_name: str) -> Any:
+        """Builds the view on the given datastore.
+
+        Args:
+            datastore: Async datastore the view reads and writes through.
+            tracking_table_name: Name of the projection tracking table.
+
+        Returns:
+            The view, wired to its tracking table.
+        """
+        return cls.view_class(
+            datastore=datastore,
+            tracking_table=datastore.create_tracking_table(tracking_table_name),
+        )
+
+    @classmethod
+    async def projection_resource(
+        cls,
+        env: dict[str, str],
+        enabled: bool,
+    ) -> AsyncIterator[Any]:
+        """Runs the context's projection for the lifetime of the resource.
+
+        Args:
+            env: The eventsourcing environment of the context.
+            enabled: Whether the projection runs at all.
+
+        Yields:
+            The started runner, or ``None`` when the projection is disabled.
+        """
+        if not enabled:
+            yield None
+            return
+        runner = cls.runner_factory(env)
+        await runner.start()
+        try:
+            yield runner
+        finally:
+            # The runner owns its application, view and datastore.
+            await runner.stop()
+
+
+class CatalogViewFactory(ViewFactory):
     """Builds the catalog read model and its projection resource."""
 
-    @staticmethod
-    def build(
-        datastore: Datastore,
-        tracking_table_name: str,
-    ) -> SQLAlchemyCatalogView:
-        """Builds the catalog view on the given datastore."""
-        return SQLAlchemyCatalogView(
-            datastore=datastore,
-            tracking_table=datastore.create_tracking_table(tracking_table_name),
-        )
-
-    @staticmethod
-    async def projection_resource(
-        env: dict[str, str],
-        enabled: bool,
-    ) -> AsyncIterator[Any]:
-        """Runs the catalog projection for the lifetime of the resource."""
-        if not enabled:
-            yield None
-            return
-        runner = run_catalog_projection(env)
-        await runner.start()
-        try:
-            yield runner
-        finally:
-            # The runner owns its application, view and datastore.
-            await runner.stop()
+    view_class = SQLAlchemyCatalogView
+    runner_factory = staticmethod(run_catalog_projection)
 
 
-class IngestionViewFactory:
+class IngestionViewFactory(ViewFactory):
     """Builds the ingestion read model and its projection resource."""
 
-    @staticmethod
-    def build(
-        datastore: Datastore,
-        tracking_table_name: str,
-    ) -> SQLAlchemyIngestionView:
-        """Builds the ingestion view on the given datastore."""
-        return SQLAlchemyIngestionView(
-            datastore=datastore,
-            tracking_table=datastore.create_tracking_table(tracking_table_name),
-        )
-
-    @staticmethod
-    async def projection_resource(
-        env: dict[str, str],
-        enabled: bool,
-    ) -> AsyncIterator[Any]:
-        """Runs the ingestion projection for the lifetime of the resource."""
-        if not enabled:
-            yield None
-            return
-        runner = run_ingestion_projection(env)
-        await runner.start()
-        try:
-            yield runner
-        finally:
-            # The runner owns its application, view and datastore.
-            await runner.stop()
+    view_class = SQLAlchemyIngestionView
+    runner_factory = staticmethod(run_ingestion_projection)
 
 
-class VocabularyViewFactory:
+class VocabularyViewFactory(ViewFactory):
     """Builds the vocabulary read model and its projection resource."""
 
-    @staticmethod
-    def build(
-        datastore: Datastore,
-        tracking_table_name: str,
-    ) -> SQLAlchemyVocabularyView:
-        """Builds the vocabulary view on the given datastore."""
-        return SQLAlchemyVocabularyView(
-            datastore=datastore,
-            tracking_table=datastore.create_tracking_table(tracking_table_name),
-        )
-
-    @staticmethod
-    async def projection_resource(
-        env: dict[str, str],
-        enabled: bool,
-    ) -> AsyncIterator[Any]:
-        """Runs the vocabulary projection for the lifetime of the resource."""
-        if not enabled:
-            yield None
-            return
-        runner = run_vocabulary_projection(env)
-        await runner.start()
-        try:
-            yield runner
-        finally:
-            # The runner owns its application, view and datastore.
-            await runner.stop()
+    view_class = SQLAlchemyVocabularyView
+    runner_factory = staticmethod(run_vocabulary_projection)
 
 
-class SemanticViewFactory:
+class SemanticViewFactory(ViewFactory):
     """Builds the semantic read model and its projection resource."""
 
-    @staticmethod
-    def build(
-        datastore: Datastore,
-        tracking_table_name: str,
-    ) -> SQLAlchemySemanticView:
-        """Builds the semantic view on the given datastore."""
-        return SQLAlchemySemanticView(
-            datastore=datastore,
-            tracking_table=datastore.create_tracking_table(tracking_table_name),
-        )
-
-    @staticmethod
-    async def projection_resource(
-        env: dict[str, str],
-        enabled: bool,
-    ) -> AsyncIterator[Any]:
-        """Runs the semantic projection for the lifetime of the resource."""
-        if not enabled:
-            yield None
-            return
-        runner = run_semantic_projection(env)
-        await runner.start()
-        try:
-            yield runner
-        finally:
-            # The runner owns its application, view and datastore.
-            await runner.stop()
+    view_class = SQLAlchemySemanticView
+    runner_factory = staticmethod(run_semantic_projection)
 
 
-class CommentViewFactory:
+class CommentViewFactory(ViewFactory):
     """Builds the comment read model and its projection resource."""
 
-    @staticmethod
-    def build(
-        datastore: Datastore,
-        tracking_table_name: str,
-    ) -> SQLAlchemyCommentView:
-        """Builds the comment view on the given datastore."""
-        return SQLAlchemyCommentView(
-            datastore=datastore,
-            tracking_table=datastore.create_tracking_table(tracking_table_name),
-        )
-
-    @staticmethod
-    async def projection_resource(
-        env: dict[str, str],
-        enabled: bool,
-    ) -> AsyncIterator[Any]:
-        """Runs the comment projection for the lifetime of the resource."""
-        if not enabled:
-            yield None
-            return
-        runner = run_comment_projection(env)
-        await runner.start()
-        try:
-            yield runner
-        finally:
-            # The runner owns its application, view and datastore.
-            await runner.stop()
+    view_class = SQLAlchemyCommentView
+    runner_factory = staticmethod(run_comment_projection)
 
 
 def get_database_for(settings: AppSettings, context: str) -> DatabaseSettings:
@@ -268,84 +236,46 @@ def get_database_for(settings: AppSettings, context: str) -> DatabaseSettings:
     return settings.database_for(context)
 
 
-def get_catalog_env(settings: AppSettings) -> dict[str, str]:
-    """Returns the eventsourcing environment of the catalog context, with cipher.
+def context_env(settings: AppSettings, context: str) -> dict[str, str]:
+    """Returns the eventsourcing environment of one context, with the cipher.
 
     Args:
         settings: The resolved application settings.
+        context: Name of the bounded context whose database is resolved.
 
     Returns:
-        The catalog datastore environment, plus the AES cipher keys when
-        ``cipher_key`` is configured.
+        The datastore environment, plus the AES cipher keys when ``cipher_key``
+        is configured.
     """
     return with_cipher(
-        get_eventsourcing_env(settings.database_for("catalog")),
+        get_eventsourcing_env(settings.database_for(context)),
         settings.cipher_key,
     )
+
+
+def get_catalog_env(settings: AppSettings) -> dict[str, str]:
+    """Returns the eventsourcing environment of the catalog context, with cipher."""
+    return context_env(settings, "catalog")
 
 
 def get_ingestion_env(settings: AppSettings) -> dict[str, str]:
-    """Returns the eventsourcing environment of the ingestion context, with cipher.
-
-    Args:
-        settings: The resolved application settings.
-
-    Returns:
-        The ingestion datastore environment, plus the AES cipher keys when
-        ``cipher_key`` is configured.
-    """
-    return with_cipher(
-        get_eventsourcing_env(settings.database_for("ingestion")),
-        settings.cipher_key,
-    )
+    """Returns the eventsourcing environment of the ingestion context, with cipher."""
+    return context_env(settings, "ingestion")
 
 
 def get_vocabulary_env(settings: AppSettings) -> dict[str, str]:
-    """Returns the eventsourcing environment of the vocabulary context, with cipher.
-
-    Args:
-        settings: The resolved application settings.
-
-    Returns:
-        The vocabulary datastore environment, plus the AES cipher keys when
-        ``cipher_key`` is configured.
-    """
-    return with_cipher(
-        get_eventsourcing_env(settings.database_for("vocabulary")),
-        settings.cipher_key,
-    )
+    """Returns the eventsourcing environment of the vocabulary context, with cipher."""
+    return context_env(settings, "vocabulary")
 
 
 def get_semantic_env(settings: AppSettings) -> dict[str, str]:
-    """Returns the eventsourcing environment of the semantic context, with cipher.
-
-    Args:
-        settings: The resolved application settings.
-
-    Returns:
-        The semantic datastore environment, plus the AES cipher keys when
-        ``cipher_key`` is configured.
-    """
-    return with_cipher(
-        get_eventsourcing_env(settings.database_for("semantic")),
-        settings.cipher_key,
-    )
+    """Returns the eventsourcing environment of the semantic context, with cipher."""
+    return context_env(settings, "semantic")
 
 
 def get_comment_env(settings: AppSettings) -> dict[str, str]:
-    """Returns the eventsourcing environment of the comment context, with cipher.
-
-    Args:
-        settings: The resolved application settings.
-
-    Returns:
-        The comment datastore environment, plus the AES cipher keys when
-        ``cipher_key`` is configured.
-    """
-    return with_cipher(
-        get_eventsourcing_env(settings.database_for("comment")),
-        settings.cipher_key,
-    )
+    """Returns the eventsourcing environment of the comment context, with cipher."""
+    return context_env(settings, "comment")
 
 
 def get_comment_options(settings: AppSettings) -> CommentOptions:
@@ -400,19 +330,8 @@ def get_comment_authorization(
 
 
 def get_iam_env(settings: AppSettings) -> dict[str, str]:
-    """Returns the eventsourcing environment of the IAM context, with cipher.
-
-    Args:
-        settings: The resolved application settings.
-
-    Returns:
-        The IAM datastore environment, plus the AES cipher keys when
-        ``cipher_key`` is configured.
-    """
-    return with_cipher(
-        get_eventsourcing_env(settings.database_for("iam")),
-        settings.cipher_key,
-    )
+    """Returns the eventsourcing environment of the IAM context, with cipher."""
+    return context_env(settings, "iam")
 
 
 def get_iam_hasher() -> PasswordHasher:
@@ -461,36 +380,11 @@ def get_mcp_session_id() -> UUID:
     return current_session_id()
 
 
-class IamViewFactory:
-    """Builds the IAM read model and its projection resource."""
+class IamViewFactory(ViewFactory):
+    """Builds the iam read model and its projection resource."""
 
-    @staticmethod
-    def build(
-        datastore: Datastore,
-        tracking_table_name: str,
-    ) -> SQLAlchemyIamView:
-        """Builds the IAM view on the given datastore."""
-        return SQLAlchemyIamView(
-            datastore=datastore,
-            tracking_table=datastore.create_tracking_table(tracking_table_name),
-        )
-
-    @staticmethod
-    async def projection_resource(
-        env: dict[str, str],
-        enabled: bool,
-    ) -> AsyncIterator[Any]:
-        """Runs the IAM projection for the lifetime of the resource."""
-        if not enabled:
-            yield None
-            return
-        runner = run_iam_projection(env)
-        await runner.start()
-        try:
-            yield runner
-        finally:
-            # The runner owns its application, view and datastore.
-            await runner.stop()
+    view_class = SQLAlchemyIamView
+    runner_factory = staticmethod(run_iam_projection)
 
 
 def get_secrets_resolver(settings: AppSettings) -> CompositeSecretsResolver:
@@ -521,87 +415,31 @@ def get_eventsourcing_env(database: DatabaseSettings) -> dict[str, str]:
 
 def get_datastore_scope(settings: AppSettings, database: DatabaseSettings) -> str:
     """Returns ``shared`` when the context database is the global one."""
-    return "shared" if database is settings.database else "dedicated"
+    return SHARED_SCOPE if database is settings.database else "dedicated"
 
 
-class LlmConfigViewFactory:
-    """Builds the LLM provider read model and its projection resource."""
+class LlmConfigViewFactory(ViewFactory):
+    """Builds the llmconfig read model and its projection resource."""
 
-    @staticmethod
-    def build(
-        datastore: Datastore,
-        tracking_table_name: str,
-    ) -> SQLAlchemyLlmProviderView:
-        """Builds the LLM provider view on the given datastore."""
-        return SQLAlchemyLlmProviderView(
-            datastore=datastore,
-            tracking_table=datastore.create_tracking_table(tracking_table_name),
-        )
-
-    @staticmethod
-    async def projection_resource(
-        env: dict[str, str],
-        enabled: bool,
-    ) -> AsyncIterator[Any]:
-        """Runs the LLM provider projection for the lifetime of the resource."""
-        if not enabled:
-            yield None
-            return
-        runner = run_llm_config_projection(env)
-        await runner.start()
-        try:
-            yield runner
-        finally:
-            # The runner owns its application, view and datastore.
-            await runner.stop()
+    view_class = SQLAlchemyLlmProviderView
+    runner_factory = staticmethod(run_llm_config_projection)
 
 
-class ConversationViewFactory:
+class ConversationViewFactory(ViewFactory):
     """Builds the conversation read model and its projection resource."""
 
-    @staticmethod
-    def build(
-        datastore: Datastore,
-        tracking_table_name: str,
-    ) -> SQLAlchemyConversationView:
-        """Builds the conversation view on the given datastore."""
-        return SQLAlchemyConversationView(
-            datastore=datastore,
-            tracking_table=datastore.create_tracking_table(tracking_table_name),
-        )
-
-    @staticmethod
-    async def projection_resource(
-        env: dict[str, str],
-        enabled: bool,
-    ) -> AsyncIterator[Any]:
-        """Runs the conversation projection for the lifetime of the resource."""
-        if not enabled:
-            yield None
-            return
-        runner = run_conversation_projection(env)
-        await runner.start()
-        try:
-            yield runner
-        finally:
-            # The runner owns its application, view and datastore.
-            await runner.stop()
+    view_class = SQLAlchemyConversationView
+    runner_factory = staticmethod(run_conversation_projection)
 
 
 def get_llm_config_env(settings: AppSettings) -> dict[str, str]:
     """Returns the eventsourcing environment of the LLM provider context."""
-    return with_cipher(
-        get_eventsourcing_env(settings.database_for("llm_config")),
-        settings.cipher_key,
-    )
+    return context_env(settings, "llm_config")
 
 
 def get_conversation_env(settings: AppSettings) -> dict[str, str]:
     """Returns the eventsourcing environment of the conversation context."""
-    return with_cipher(
-        get_eventsourcing_env(settings.database_for("conversation")),
-        settings.cipher_key,
-    )
+    return context_env(settings, "conversation")
 
 
 def get_llm_config_authorization(
@@ -622,8 +460,9 @@ def get_conversation_authorization(
 def get_llm_config_options(settings: AppSettings) -> LlmConfigOptions:
     """Builds the LLM provider options from the application settings."""
     return LlmConfigOptions(
-        default_page_size=settings.conversation.default_page_size,
-        max_page_size=settings.conversation.max_page_size,
+        max_providers_per_user=settings.llm_config.max_providers_per_user,
+        default_page_size=settings.llm_config.default_page_size,
+        max_page_size=settings.llm_config.max_page_size,
     )
 
 
@@ -761,24 +600,6 @@ def build_agent_factory(
             get_in_process_connector_factory(server) if settings.transport == "in_process" else None
         ),
     )
-
-
-def build_mcp_server(container: Any) -> Any:
-    """Builds the MCP server of this process.
-
-    The import is deferred so the assembly layer never imports FastMCP while the
-    container class is being defined; the same instance serves the ``/mcp`` route
-    and the in-process agent transport.
-
-    Args:
-        container: The DI container the contexts and applications live on.
-
-    Returns:
-        The mounted ``MCPServer``.
-    """
-    from etlalchemy.app.mcp.server import MCPServer
-
-    return MCPServer(container)
 
 
 def get_in_process_connector_factory(server: Any | None) -> ConnectorFactory:

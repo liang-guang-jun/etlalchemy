@@ -9,10 +9,9 @@ from collections.abc import Callable
 from typing import Any
 
 from dependency_injector import providers
-from fastmcp import Client
-
 from etlalchemy.app.bootstrap import Container
 from etlalchemy.app.mcp.server import MCPServer
+from fastmcp import Client
 
 
 async def list_tools(server: MCPServer) -> list[Any]:

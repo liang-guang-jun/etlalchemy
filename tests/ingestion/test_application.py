@@ -3,7 +3,6 @@
 from uuid import UUID, uuid4
 
 import pytest
-
 from etlalchemy.catalog.aggregates.errors import UnknownSchemaError
 from etlalchemy.ingestion import (
     DiscardedError,
@@ -19,6 +18,7 @@ from etlalchemy.ingestion import (
 )
 from etlalchemy.ingestion.aggregates.import_run import ImportRun
 from etlalchemy.ingestion.ports.data_source import ColumnInfo
+
 from tests.ingestion.support import (
     FakeConnectionsView,
     FakeSource,
@@ -84,7 +84,7 @@ async def latest_run_id(application: IngestionApplication, connection_id: UUID) 
 async def test_create_connection_persists_a_started_event(
     application: IngestionApplication,
 ) -> None:
-    """await create_connection() saves the new aggregate and returns its id."""
+    """Await create_connection() saves the new aggregate and returns its id."""
     connection_id = await create_connection(application)
 
     connection = await application.get_connection(connection_id)

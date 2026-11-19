@@ -9,11 +9,7 @@ from uuid import UUID
 from eventsourcing.asyncio.persistence import AsyncTrackingRecorder
 from eventsourcing.persistence import Tracking
 
-
-def as_uuid(value: UUID | str) -> UUID:
-    """Returns the given value as a :class:`UUID`."""
-    return value if isinstance(value, UUID) else UUID(value)
-
+from etlalchemy.shared.utils import as_uuid as as_uuid
 
 RefPair = tuple[str, str]
 """A ``(entity name, field name)`` reference of one relationship side."""

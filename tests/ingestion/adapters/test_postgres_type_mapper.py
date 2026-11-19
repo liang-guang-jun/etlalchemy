@@ -1,7 +1,6 @@
 """Tests for the PostgreSQL type mapper."""
 
 import pytest
-
 from etlalchemy.catalog.aggregates.types import DataType
 from etlalchemy.ingestion.adapters.postgres import PostgresTypeMapper
 from etlalchemy.ingestion.aggregates.errors import UnsupportedTypeError

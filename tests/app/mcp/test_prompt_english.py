@@ -4,8 +4,8 @@ import re
 from typing import Any
 
 import pytest
-
 from etlalchemy.app.mcp.server import MCPServer
+
 from tests.app.mcp.support import get_prompt, list_prompts
 
 NON_ASCII = re.compile(r"[^\x00-\x7f]")

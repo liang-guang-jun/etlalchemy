@@ -5,7 +5,6 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-
 from etlalchemy.catalog.aggregates.errors import (
     DiscardedError,
     DuplicateFieldError,

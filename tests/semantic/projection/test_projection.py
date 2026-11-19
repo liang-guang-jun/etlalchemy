@@ -8,13 +8,13 @@ from uuid import UUID
 
 import pytest
 import sqlalchemy as sa
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-
 from etlalchemy.semantic.aggregates.types import ALL_DIAGRAM, Cardinality, FieldRef, FilterDirection
 from etlalchemy.semantic.application import ModelApplication
 from etlalchemy.semantic.projection.projection import run_semantic_projection
 from etlalchemy.semantic.projection.sqlalchemy import SQLAlchemySemanticView
 from etlalchemy.semantic.projection.tables import metadata as view_metadata
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
+
 from tests.semantic.support import FakeCatalogView
 from tests.support import async_env, sqlite_url
 

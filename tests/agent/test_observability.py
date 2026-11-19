@@ -10,11 +10,11 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from langchain_core.messages import AIMessage
-
 from etlalchemy.agent.observability.mlflow import MlflowSettings
 from etlalchemy.agent.runtime import AgentRunner, RunRequest
 from etlalchemy.agent.settings import AgentLimits, AgentRuntimeSettings
+from langchain_core.messages import AIMessage
+
 from tests.agent.support import FakeConversation, FakeMcpClient, UsageChatModel
 
 
@@ -131,9 +131,9 @@ async def test_disabled_tracing_never_imports_mlflow(monkeypatch: pytest.MonkeyP
 )
 async def test_live_tracking_server_records_the_run() -> None:
     """Against a real tracking server the run is retrievable by its name."""
-    import os  # noqa: PLC0415 - only needed by the integration test
+    import os
 
-    import mlflow  # noqa: PLC0415 - optional extra, required here
+    import mlflow
 
     conversation = FakeConversation()
     run = await runner_with_tracing(

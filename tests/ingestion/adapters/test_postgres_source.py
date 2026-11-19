@@ -3,7 +3,6 @@
 from typing import Any
 
 import pytest
-
 from etlalchemy.ingestion.adapters.postgres import PostgresSource, PostgresTypeMapper
 from etlalchemy.ingestion.aggregates.errors import UnknownCatalogError
 

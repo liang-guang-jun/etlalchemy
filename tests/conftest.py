@@ -6,10 +6,10 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-
 from etlalchemy.catalog.application import CatalogApplication
 from etlalchemy.catalog.projection.sqlalchemy import SQLAlchemyCatalogView
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
+
 from tests.support import async_env, sqlite_url
 
 

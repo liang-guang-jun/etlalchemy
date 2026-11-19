@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from etlalchemy.agent.mcp.resources import READ_RESOURCE_TOOL, ResourceReader, normalise_uri
 from etlalchemy.agent.settings import AgentRuntimeSettings
+
 from tests.agent.support import FakeMcpClient, FakeObserver
 
 

@@ -1,7 +1,6 @@
 """Tests for the canonical data type value object."""
 
 import pytest
-
 from etlalchemy.catalog.aggregates.errors import InvalidDataTypeError
 from etlalchemy.catalog.aggregates.types import DataType
 

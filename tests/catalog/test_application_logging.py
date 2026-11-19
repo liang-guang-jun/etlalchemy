@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import pytest
-from structlog.testing import capture_logs
-
 from etlalchemy.catalog import CatalogApplication
 from etlalchemy.catalog.aggregates.errors import UnknownSchemaError
 from etlalchemy.shared.logging import reset_logging
+from structlog.testing import capture_logs
 
 
 @pytest.fixture(autouse=True)

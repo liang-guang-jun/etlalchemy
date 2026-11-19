@@ -7,15 +7,14 @@ from collections.abc import Callable, Sequence
 from uuid import UUID, uuid4
 
 import pytest
-from eventsourcing.persistence import Tracking
-from sqlalchemy.exc import IntegrityError
-
 from etlalchemy.vocabulary.projection.sqlalchemy import SQLAlchemyVocabularyView
 from etlalchemy.vocabulary.projection.view import (
     DomainRow,
     TermLinkRow,
     TermRow,
 )
+from eventsourcing.persistence import Tracking
+from sqlalchemy.exc import IntegrityError
 
 UPSTREAM = "vocabulary-application"
 

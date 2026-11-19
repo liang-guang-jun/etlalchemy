@@ -6,14 +6,14 @@ same observable behaviour.
 
 import os
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
+from etlalchemy.ingestion.projection.sqlalchemy import SQLAlchemyIngestionView
+from etlalchemy.ingestion.projection.view import IngestionView
 from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from eventsourcing.persistence import Tracking
 
-from etlalchemy.ingestion.projection.sqlalchemy import SQLAlchemyIngestionView
-from etlalchemy.ingestion.projection.view import IngestionView
 from tests.support import async_postgres_url, sqlite_url
 
 UPSTREAM = "ingestion-application"

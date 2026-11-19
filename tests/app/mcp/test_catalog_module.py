@@ -42,7 +42,7 @@ async def test_catalog_registers_all_primitives() -> None:
 
     tools, resources, templates, prompts = await names()
 
-    assert EXPECTED_TOOLS <= tools
+    assert tools >= EXPECTED_TOOLS
     assert "catalog:///all" in resources
     assert "catalog:///{catalog_id}/schemas" in templates
     assert {"catalog-overview", "inspect-table", "find-field", "rename-safely"} <= prompts

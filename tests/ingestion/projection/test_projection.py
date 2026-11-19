@@ -5,8 +5,6 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from structlog.testing import capture_logs
-
 from etlalchemy.ingestion.aggregates.connection import SourceConnection
 from etlalchemy.ingestion.aggregates.import_run import ImportRun
 from etlalchemy.ingestion.projection.projection import (
@@ -14,6 +12,8 @@ from etlalchemy.ingestion.projection.projection import (
     run_ingestion_projection,
 )
 from etlalchemy.shared.logging import reset_logging
+from structlog.testing import capture_logs
+
 from tests.support import async_env, sqlite_url
 
 

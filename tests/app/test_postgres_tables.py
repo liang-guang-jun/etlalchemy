@@ -5,9 +5,9 @@ from collections.abc import Callable
 
 import psycopg
 import pytest
-from fastapi.testclient import TestClient
-
 from etlalchemy.app.api.app import create_app
+from etlalchemy.app.bootstrap.contexts import CONTEXT_SPECS
+from fastapi.testclient import TestClient
 
 DSN = os.environ.get("TEST_DATABASE_URL") or os.environ.get("ETLALCHEMY_DSN")
 
@@ -16,66 +16,24 @@ pytestmark = [
     pytest.mark.skipif(not DSN, reason="TEST_DATABASE_URL is not set"),
 ]
 
-TABLES = (
-    "catalog_catalogs",
-    "catalog_schemas",
-    "catalog_tables",
-    "catalog_fields",
-    "catalog_application_events",
-    "catalog_projection_tracking",
-    "ingestion_connections",
-    "ingestion_import_runs",
-    "ingestion_application_events",
-    "ingestion_projection_tracking",
-    "vocabulary_domains",
-    "vocabulary_terms",
-    "vocabulary_term_aliases",
-    "vocabulary_term_links",
-    "vocabulary_application_events",
-    "vocabulary_projection_tracking",
-    "semantic_models",
-    "semantic_entities",
-    "semantic_relationships",
-    "semantic_relationship_fields",
-    "semantic_diagrams",
-    "semantic_nodes",
-    "semantic_application_events",
-    "semantic_projection_tracking",
-    "comment_threads",
-    "comment_comments",
-    "comment_mentions",
-    "comment_application_events",
-    "comment_projection_tracking",
-    "iam_tenants",
-    "iam_users",
-    "iam_tenant_members",
-    "iam_identities",
-    "iam_password_creds",
-    "iam_oidc_creds",
-    "iam_api_keys",
-    "iam_sessions",
-    "iam_groups",
-    "iam_group_members",
-    "iam_permission_grants",
-    "iam_auth_providers",
-    "iam_casbin_rules",
-    "iam_audit_log",
-    "iam_application_events",
-    "iam_projection_tracking",
-    "llm_config_providers",
-    "llm_config_provider_shares",
-    "llm_config_provider_defaults",
-    "llm_config_application_events",
-    "llm_config_projection_tracking",
-    "conversation_conversations",
-    "conversation_messages",
-    "conversation_message_resources",
-    "conversation_message_tools",
-    "conversation_runs",
-    "conversation_approvals",
-    "conversation_application_events",
-    "conversation_projection_tracking",
-)
+def _expected_tables() -> set[str]:
+    """Derives the expected tables from the context registry.
+
+    Read-model tables come from each view's own metadata, the event store and
+    tracking tables from the application and projection names, so a new context
+    is covered without editing a list here.
+    """
+    tables: set[str] = set()
+    for spec in CONTEXT_SPECS:
+        tables.update(spec.view_factory.view_class.view_metadata.tables)
+        prefix = spec.name
+        tables.add(f"{prefix}_application_events")
+        tables.add(f"{prefix}_projection_tracking")
+    return tables
+
+
+TABLES = tuple(sorted(_expected_tables()))
+
 OLD_TABLES = (
     "catalogapplication_events",
     "catalogprojection_tracking",

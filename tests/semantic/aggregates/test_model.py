@@ -7,7 +7,6 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-
 from etlalchemy.semantic.aggregates.errors import (
     DiscardedError,
     DuplicateEntityError,

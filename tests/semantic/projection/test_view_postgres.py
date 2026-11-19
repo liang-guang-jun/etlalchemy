@@ -15,11 +15,11 @@ from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
 
 import pytest
+from etlalchemy.semantic.aggregates.types import ALL_DIAGRAM
+from etlalchemy.semantic.projection.sqlalchemy import SQLAlchemySemanticView
 from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from eventsourcing.persistence import Tracking
 
-from etlalchemy.semantic.aggregates.types import ALL_DIAGRAM
-from etlalchemy.semantic.projection.sqlalchemy import SQLAlchemySemanticView
 from tests.support import async_postgres_url
 
 DSN = os.environ.get("TEST_DATABASE_URL") or os.environ.get("ETLALCHEMY_DSN")

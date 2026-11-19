@@ -9,14 +9,13 @@ from typing import Any
 from uuid import uuid4
 
 from dependency_injector import providers
-
 from etlalchemy.app.bootstrap import Container
 from etlalchemy.app.mcp.server import MCPServer
+
 from tests.app.mcp.support import (
     call_tool,
     list_prompts,
     list_resource_templates,
-    list_resources,
     list_tools,
     read_resource,
 )
@@ -88,9 +87,9 @@ async def test_comment_registers_all_primitives(server: MCPServer) -> None:
     templates = {template.uri_template for template in await list_resource_templates(server)}
     prompts = {prompt.name for prompt in await list_prompts(server)}
 
-    assert COMMENT_TOOLS <= tools
-    assert COMMENT_TEMPLATES <= templates
-    assert COMMENT_PROMPTS <= prompts
+    assert tools >= COMMENT_TOOLS
+    assert templates >= COMMENT_TEMPLATES
+    assert prompts >= COMMENT_PROMPTS
 
 
 async def test_comment_tool_hints(server: MCPServer) -> None:

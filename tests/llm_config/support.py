@@ -7,14 +7,13 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-
 from etlalchemy.iam.aggregates.errors import AuthenticationError
 from etlalchemy.llm_config.application import LlmConfigApplication
 from etlalchemy.llm_config.ports.authorization import SessionUser
 from etlalchemy.llm_config.projection.projection import run_llm_config_projection
 from etlalchemy.llm_config.projection.sqlalchemy import SQLAlchemyLlmProviderView
 from etlalchemy.llm_config.projection.view import LlmProviderView
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 
 TRACKING_TABLE = "llm_config_projection_tracking"
 """Tracking table both the view and the projection runner use."""

@@ -6,12 +6,11 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from etlalchemy.app.api.app import create_app
+from etlalchemy.app.api.routes.catalog import add_exception_handlers
 from eventsourcing.persistence import IntegrityError
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from etlalchemy.app.api.app import create_app
-from etlalchemy.app.api.routes.catalog import add_exception_handlers
 
 WAIT_TIMEOUT = 10.0
 

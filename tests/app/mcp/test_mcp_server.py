@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
-from fastmcp import Client, FastMCP
-
 from etlalchemy.app.mcp import registry
 from etlalchemy.app.mcp import server as server_module
 from etlalchemy.app.mcp.server import MCPServer
+from fastmcp import Client, FastMCP
 
 
 async def _surface(mcp: FastMCP) -> dict[str, set[str]]:

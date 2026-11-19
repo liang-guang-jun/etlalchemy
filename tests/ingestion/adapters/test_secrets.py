@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import pytest
-
 from etlalchemy.ingestion.adapters.secrets_composite import CompositeSecretsResolver
 from etlalchemy.ingestion.adapters.secrets_env import EnvSecretsProvider
 from etlalchemy.ingestion.adapters.secrets_file import FileSecretsProvider

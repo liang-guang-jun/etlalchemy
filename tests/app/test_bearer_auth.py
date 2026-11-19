@@ -7,8 +7,6 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from fastapi.testclient import TestClient
-
 from etlalchemy.app.api.app import create_app
 from etlalchemy.app.bootstrap.factories import get_iam_env
 from etlalchemy.app.bootstrap.settings import load_app_settings
@@ -16,6 +14,7 @@ from etlalchemy.iam.adapters.passwords import PasswordHasher
 from etlalchemy.iam.aggregates.identity import Identity
 from etlalchemy.iam.aggregates.user import User
 from etlalchemy.iam.projection.projection import IamEventApplication
+from fastapi.testclient import TestClient
 
 PASSWORD = "correct-horse-battery"
 WAIT_TIMEOUT = 10.0

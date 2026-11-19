@@ -9,6 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from etlalchemy.app.mcp.server import MCPServer
+
 from tests.app.mcp.support import (
     call_tool,
     get_prompt,
@@ -108,10 +109,10 @@ async def test_vocabulary_registers_all_primitives(server: MCPServer) -> None:
     templates = {template.uri_template for template in await list_resource_templates(server)}
     prompts = {prompt.name for prompt in await list_prompts(server)}
 
-    assert VOCABULARY_TOOLS <= tools
+    assert tools >= VOCABULARY_TOOLS
     assert "vocabulary:///domains" in resources
-    assert VOCABULARY_TEMPLATES <= templates
-    assert VOCABULARY_PROMPTS <= prompts
+    assert templates >= VOCABULARY_TEMPLATES
+    assert prompts >= VOCABULARY_PROMPTS
 
 
 async def test_vocabulary_tree_workflow_over_mcp(server: MCPServer) -> None:

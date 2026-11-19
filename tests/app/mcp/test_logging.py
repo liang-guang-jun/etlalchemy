@@ -7,10 +7,10 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from structlog.testing import capture_logs
-
 from etlalchemy.app.mcp.server import MCPServer
 from etlalchemy.shared.logging import configure_logging, reset_logging
+from structlog.testing import capture_logs
+
 from tests.app.mcp.support import call_tool, read_resource
 
 

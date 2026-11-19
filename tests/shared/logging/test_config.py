@@ -10,10 +10,9 @@ from typing import Any
 
 import pytest
 import structlog
+from etlalchemy.shared.logging import configure_logging, get_logger, reset_logging
 from structlog.stdlib import ProcessorFormatter
 from structlog.testing import capture_logs
-
-from etlalchemy.shared.logging import configure_logging, get_logger, reset_logging
 
 
 def settings(**overrides: Any) -> SimpleNamespace:

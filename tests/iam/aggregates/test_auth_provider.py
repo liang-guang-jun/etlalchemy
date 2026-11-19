@@ -4,7 +4,6 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-
 from etlalchemy.iam.aggregates.auth_provider import AuthProvider
 from etlalchemy.iam.aggregates.errors import (
     DiscardedError,

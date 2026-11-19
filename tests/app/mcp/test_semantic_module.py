@@ -8,6 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 from etlalchemy.app.mcp.server import MCPServer
+
 from tests.app.mcp.support import (
     call_tool,
     list_prompts,
@@ -145,10 +146,10 @@ async def test_semantic_registers_all_primitives(server: MCPServer) -> None:
     templates = {template.uri_template for template in await list_resource_templates(server)}
     prompts = {prompt.name for prompt in await list_prompts(server)}
 
-    assert SEMANTIC_TOOLS <= tools
+    assert tools >= SEMANTIC_TOOLS
     assert "semantic:///models" in resources
-    assert SEMANTIC_TEMPLATES <= templates
-    assert SEMANTIC_PROMPTS <= prompts
+    assert templates >= SEMANTIC_TEMPLATES
+    assert prompts >= SEMANTIC_PROMPTS
 
 
 async def test_semantic_workflow_over_mcp(server: MCPServer) -> None:

@@ -8,7 +8,6 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-
 from etlalchemy.comment.aggregates.errors import (
     CommentAuthorMismatchError,
     CommentBodyEmptyError,

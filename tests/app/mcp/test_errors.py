@@ -1,8 +1,6 @@
 """Tests for the MCP error mapping."""
 
 import pytest
-from eventsourcing.persistence import IntegrityError
-
 from etlalchemy.app.mcp.errors import mcp_error_guard, to_mcp_error
 from etlalchemy.catalog.aggregates.errors import (
     DuplicateSchemaError,
@@ -44,6 +42,7 @@ from etlalchemy.vocabulary.aggregates.errors import (
     UnknownParentError,
     UnknownTermError,
 )
+from eventsourcing.persistence import IntegrityError
 
 
 async def test_record_conflict_is_reported_as_a_conflict() -> None:
@@ -97,6 +96,5 @@ async def test_error_categories(error: Exception, prefix: str) -> None:
 
 async def test_guard_raises_conflict_for_record_conflicts() -> None:
     """The guard turns a record conflict into a conflict-tagged RuntimeError."""
-    with pytest.raises(RuntimeError, match=r"^\[conflict\] "):
-        with mcp_error_guard():
-            raise IntegrityError("duplicate key value violates unique constraint")
+    with pytest.raises(RuntimeError, match=r"^\[conflict\] "), mcp_error_guard():
+        raise IntegrityError("duplicate key value violates unique constraint")

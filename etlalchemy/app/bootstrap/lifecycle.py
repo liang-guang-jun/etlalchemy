@@ -15,59 +15,11 @@ from typing import Any
 from fastapi import FastAPI
 
 from etlalchemy.app.bootstrap.container import Container
-from etlalchemy.catalog.application import CatalogApplication
-from etlalchemy.catalog.projection.view import CatalogView
-from etlalchemy.comment.application import CommentApplication
-from etlalchemy.comment.projection.view import CommentView
-from etlalchemy.conversation.application import ConversationApplication
-from etlalchemy.conversation.projection.view import ConversationView
-from etlalchemy.iam.application import IamApplication
-from etlalchemy.iam.projection.view import IamView
-from etlalchemy.ingestion.application import IngestionApplication
-from etlalchemy.ingestion.projection.view import IngestionView
-from etlalchemy.llm_config.application import LlmConfigApplication
-from etlalchemy.llm_config.projection.view import LlmProviderView
-from etlalchemy.semantic.application import ModelApplication
-from etlalchemy.semantic.projection.view import SemanticView
+from etlalchemy.app.bootstrap.contexts import CONTEXT_SPECS
 from etlalchemy.shared.logging import configure_logging, get_logger
-from etlalchemy.vocabulary.application import VocabularyApplication
-from etlalchemy.vocabulary.projection.view import VocabularyView
 
-CONTEXTS: tuple[str, ...] = (
-    "catalog",
-    "iam",
-    "ingestion",
-    "semantic",
-    "vocabulary",
-    "comment",
-    "llm_config",
-    "conversation",
-)
+CONTEXTS: tuple[str, ...] = tuple(spec.name for spec in CONTEXT_SPECS)
 """Bounded contexts whose read models and applications the lifecycle manages."""
-
-Application = (
-    CatalogApplication
-    | IamApplication
-    | IngestionApplication
-    | ModelApplication
-    | VocabularyApplication
-    | CommentApplication
-    | LlmConfigApplication
-    | ConversationApplication
-)
-"""Application classes the lifecycle starts and closes."""
-
-View = (
-    CatalogView
-    | IamView
-    | IngestionView
-    | SemanticView
-    | VocabularyView
-    | CommentView
-    | LlmProviderView
-    | ConversationView
-)
-"""Read models the lifecycle creates once their datastore is running."""
 
 
 async def _await_if_needed(result: Awaitable[None] | None) -> None:
@@ -116,19 +68,19 @@ async def run_container(container: Container) -> AsyncIterator[Container]:
     container.wire(modules=container.wiring_config.modules)
     try:
         await _await_if_needed(container.init_resources())
-        for context in CONTEXTS:
-            view: View = getattr(container, f"{context}_view")()
+        for spec in CONTEXT_SPECS:
+            view: Any = getattr(container, spec.view_provider)()
             await view.create_table()
-            application: Application = getattr(container, f"{context}_application")()
+            application: Any = getattr(container, spec.application_provider)()
             await application.start()
-            log.debug("lifecycle.read_model.ready", context=context)
+            log.debug("lifecycle.read_model.ready", context=spec.name)
         await _bootstrap_llm_provider(container)
         log.info("lifecycle.resources.started")
         yield container
     finally:
         log.info("lifecycle.stop")
-        for context in CONTEXTS:
-            closing: Application = getattr(container, f"{context}_application")()
+        for spec in CONTEXT_SPECS:
+            closing: Any = getattr(container, spec.application_provider)()
             await closing.aclose()
         await _await_if_needed(container.shutdown_resources())
         container.unwire()

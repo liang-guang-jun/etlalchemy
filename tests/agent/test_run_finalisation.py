@@ -7,13 +7,13 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from etlalchemy.agent.runtime import AgentRunner, RunRequest
+from etlalchemy.agent.settings import AgentLimits, AgentRuntimeSettings
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatResult
 from langgraph.checkpoint.memory import MemorySaver
 
-from etlalchemy.agent.runtime import AgentRunner, RunRequest
-from etlalchemy.agent.settings import AgentLimits, AgentRuntimeSettings
 from tests.agent.support import FakeConversation, FakeMcpClient
 
 

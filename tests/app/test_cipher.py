@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-
 from etlalchemy.app.bootstrap.factories import get_catalog_env, get_ingestion_env
 from etlalchemy.app.config.settings import AppSettings, DatabaseSettings
 from etlalchemy.catalog.application import CatalogApplication

@@ -9,15 +9,15 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-
 from etlalchemy.iam.aggregates.errors import (
-    IdentityUnavailableError,
     IamValidationError,
+    IdentityUnavailableError,
     UnknownAuthProviderError,
     UnknownMembershipError,
 )
 from etlalchemy.iam.application import IamApplication, IamOptions, SessionRef
 from etlalchemy.iam.projection.projection import run_iam_projection
+
 from tests.iam.support import build_application, login, sync
 from tests.support import async_env, sqlite_url
 

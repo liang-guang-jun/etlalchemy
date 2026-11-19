@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, ToolMessage
-
 from etlalchemy.agent.mcp.tools import args_hash
 from etlalchemy.agent.runtime import _restore_calls
 from etlalchemy.agent.settings import AgentRuntimeSettings
+from langchain_core.messages import AIMessage, ToolMessage
 
 SETTINGS = AgentRuntimeSettings()
 

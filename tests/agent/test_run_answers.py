@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
+from etlalchemy.agent.runtime import NO_ANSWER_TEXT, AgentRunner, RunRequest, _final_text
+from etlalchemy.agent.settings import AgentLimits, AgentRuntimeSettings
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.memory import MemorySaver
 
-from etlalchemy.agent.runtime import NO_ANSWER_TEXT, AgentRunner, RunRequest, _final_text
-from etlalchemy.agent.settings import AgentLimits, AgentRuntimeSettings
 from tests.agent.support import FakeConversation, FakeMcpClient
 
 GREETING = "Hello! I'm doing great, thank you. How can I assist you today?"

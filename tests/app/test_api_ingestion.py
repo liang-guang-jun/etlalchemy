@@ -8,10 +8,10 @@ from uuid import uuid4
 
 import pytest
 from dependency_injector import providers
-from fastapi.testclient import TestClient
-
 from etlalchemy.app.api.app import create_app
 from etlalchemy.ingestion.ports.data_source import ColumnInfo, SourceProfile
+from fastapi.testclient import TestClient
+
 from tests.ingestion.support import FakeSource, FakeSourceFactory
 
 WAIT_TIMEOUT = 10.0

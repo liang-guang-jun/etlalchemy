@@ -47,6 +47,11 @@ The rule that keeps this honest is mechanical: a context may import
 FastAPI, never dependency-injector, never pydantic-settings. `etlalchemy/shared/`
 itself may only import the standard library, `eventsourcing` and `structlog`.
 
+`tests/app/test_architecture.py` enforces all of it, including the few
+deliberate cross-context edges (ingestion, vocabulary and semantic read the
+catalog; comment reads five read models; conversation and llm_config authorize
+through an IAM port).
+
 ## The package map
 
 ```mermaid
@@ -108,6 +113,7 @@ which is why a `409` and a `[conflict]` describe the same rejection.
 
 | Module | Owns |
 |---|---|
+| `bootstrap/contexts.py` | `ContextSpec` and the single registry every layer derives from |
 | `bootstrap/factories.py` | datastores, views, env resolvers |
 | `bootstrap/container.py` | providers and wiring, no logic |
 | `bootstrap/lifecycle.py` | `run_container`, `api_lifespan`, the `CONTEXTS` list |
@@ -116,6 +122,12 @@ which is why a `409` and a `[conflict]` describe the same rejection.
 | `api/` | app factory, routes, error mapping, request logging |
 | `mcp/` | registry, server, one package per context |
 | `cli/` | typer app and the `server` command |
+
+`bootstrap/contexts.py` is the one place that names the contexts. The lifecycle
+walks `CONTEXT_SPECS` to start each application and create each read model, the
+HTTP application walks `request_contexts()` to include routers and error
+handlers, and the table-naming test derives its expectations from the same
+list. Adding a context is one entry, not an edit in ten modules.
 
 Applications are **started by the lifecycle, not by their provider**: the
 container only constructs them, so a request can never observe a

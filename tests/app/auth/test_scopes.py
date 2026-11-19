@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from etlalchemy.app.auth.scopes import permission_to_scope, scope_covers
 from etlalchemy.iam.aggregates.types import Permission
 

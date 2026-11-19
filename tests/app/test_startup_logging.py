@@ -16,12 +16,11 @@ from typing import Any
 
 import pytest
 import uvicorn
-from structlog.testing import capture_logs
-
 from etlalchemy.app.bootstrap import Container
 from etlalchemy.app.bootstrap.lifecycle import run_container
 from etlalchemy.app.cli.server import serve
 from etlalchemy.shared.logging import configure_logging, reset_logging
+from structlog.testing import capture_logs
 
 
 def settings(**overrides: Any) -> SimpleNamespace:

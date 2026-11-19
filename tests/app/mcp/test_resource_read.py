@@ -7,6 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 from etlalchemy.app.mcp.server import MCPServer
+
 from tests.app.mcp.support import call_tool, read_resource
 
 WAIT_TIMEOUT = 10.0

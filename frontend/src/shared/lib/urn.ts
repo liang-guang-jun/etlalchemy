@@ -1,6 +1,65 @@
 import { catalogPath, columnPath, schemaPath, tablePath } from './catalog-routes';
 import { domainPath, termPath } from './vocabulary-routes';
 import { workspacePath } from './semantic-routes';
+import { isUuid } from './uuid';
+
+/**
+ * Characters that end a URN wherever they appear.
+ *
+ * A model writes an id in its own markup — backticks, quotes, a bracket — and
+ * names the object right after it, so those characters must not become part of
+ * the last segment. Without them the collected id carries the delimiter and the
+ * rest of the sentence, and the target lookup rejects it as a malformed UUID.
+ *
+ * The full-width forms matter because the answer follows the language of the
+ * reader: a Chinese sentence ends an id with `，` and continues in prose, without
+ * a space or a code span to stop the pattern.
+ */
+const URN_DELIMITERS = [
+  '`',
+  '"',
+  "'",
+  '(',
+  ')',
+  '[',
+  ']',
+  '{',
+  '}',
+  '<',
+  '>',
+  '（',
+  '）',
+  '［',
+  '］',
+  '｛',
+  '｝',
+  '「',
+  '」',
+  '『',
+  '』',
+  '《',
+  '》',
+  '【',
+  '】',
+  '，',
+  '。',
+  '；',
+  '：',
+  '！',
+  '？',
+  '、',
+  '“',
+  '”',
+  '‘',
+  '’',
+];
+
+/**
+ * The delimiter set, ready for a regular-expression character class.
+ *
+ * A dash is deliberately absent: a UUID is full of them.
+ */
+const DELIMITER_CLASS = URN_DELIMITERS.map((mark) => mark.replace(/[\\\]^]/g, '\\$&')).join('');
 
 /**
  * Matches one object URN inside running text.
@@ -8,7 +67,10 @@ import { workspacePath } from './semantic-routes';
  * The values are not validated here: `parseUrn` decides whether the URN names a
  * real page, so a malformed one keeps rendering as plain text.
  */
-export const URN_PATTERN = /\burn:(?:catalog|vocabulary|semantic)(?:\/[^\s/]+)+/g;
+export const URN_PATTERN = new RegExp(
+  String.raw`\burn:(?:catalog|vocabulary|semantic)(?:/[^\s/${DELIMITER_CLASS}]+)+`,
+  'g',
+);
 
 /**
  * Punctuation a sentence may glue onto a URN.
@@ -264,6 +326,35 @@ export function urnsIn(text: string): UrnTarget[] {
     }
     seen.add(target.urn);
     found.push(target);
+  }
+  return found;
+}
+
+/**
+ * Collects the objects a text links to, ready for the target lookup.
+ *
+ * Only references whose id is a UUID are returned: the lookup addresses every
+ * target by id, so a shortened or hand-written id (`urn:catalog/edd16b7e…`) can
+ * only be rejected. Dropping it here keeps one bad link from failing the whole
+ * request, which surfaces as an error toast in the chat.
+ *
+ * @param text Text or markdown to scan.
+ * @returns The distinct references, in order of appearance.
+ */
+export function urnReferences(text: string): UrnReference[] {
+  const found: UrnReference[] = [];
+  const seen = new Set<string>();
+  for (const target of urnsIn(text)) {
+    const reference = target.reference;
+    if (reference === null || !isUuid(reference.id)) {
+      continue;
+    }
+    const key = `${reference.type}:${reference.id}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    found.push(reference);
   }
   return found;
 }

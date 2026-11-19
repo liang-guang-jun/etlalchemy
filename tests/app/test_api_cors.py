@@ -5,9 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from fastapi.testclient import TestClient
-
 from etlalchemy.app.api.app import create_app
+from fastapi.testclient import TestClient
 
 ORIGIN = "http://localhost:5173"
 """Origin of the Vite development server used by the tests."""

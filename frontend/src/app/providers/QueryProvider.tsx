@@ -18,6 +18,16 @@ function handleUnauthorized(): void {
 }
 
 /**
+ * Marks a query whose failure is not worth a toast.
+ *
+ * The display name of an object is decoration: the caller already renders the
+ * shortened id while the lookup loads, so the same fallback covers a failure.
+ */
+export interface SilentQueryMeta {
+  silent: boolean;
+}
+
+/**
  * Creates the query client with the application defaults.
  *
  * Every request that answers 401 flows through the query cache, so the session
@@ -57,10 +67,15 @@ function createQueryClient(): QueryClient {
       },
     },
     queryCache: new QueryCache({
-      onError: (error) => {
+      onError: (error, query) => {
         const normalized = normalizeError(error);
         if (normalized.kind === 'unauthorized') {
           handleUnauthorized();
+          return;
+        }
+        // A query that only decorates the screen keeps its own fallback, so a
+        // failure does not pile a toast on top of the content it still shows.
+        if ((query.meta as Partial<SilentQueryMeta> | undefined)?.silent === true) {
           return;
         }
         toast.error(normalized.detail);

@@ -7,15 +7,14 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID, uuid4
 
-from langchain_core.language_models import BaseChatModel
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, BaseMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
-
 from etlalchemy.agent.results import AgentRun, ApprovalRequest, ToolCall
 from etlalchemy.conversation.aggregates.errors import ApprovalAlreadyDecidedError
 from etlalchemy.conversation.aggregates.types import ResourceAccess, TokenUsage
 from etlalchemy.conversation.application import MessageRef, RunRef
+from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 
 
 class RecordingModel(GenericFakeChatModel):

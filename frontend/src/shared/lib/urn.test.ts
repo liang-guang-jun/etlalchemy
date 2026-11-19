@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { remarkUrnLinks } from './remark-urn-links';
-import { parseUrn, urnsIn } from './urn';
+import { parseUrn, urnReferences, urnsIn, URN_PATTERN } from './urn';
 
 const CATALOG = '3b4213fe-22f9-40b3-a0b3-243d6fd6be31';
 const SCHEMA = '524cea4f-2a21-4230-9728-0a427c97c1ac';
@@ -12,6 +12,7 @@ interface Node {
   type: string;
   value?: string;
   url?: string;
+  title?: string;
   children?: Node[];
 }
 
@@ -95,6 +96,59 @@ describe('urnsIn', () => {
   });
 });
 
+describe('URN_PATTERN', () => {
+  /** Collects every match of the shared pattern in a text. */
+  function matches(text: string): string[] {
+    URN_PATTERN.lastIndex = 0;
+    return [...text.matchAll(new RegExp(URN_PATTERN.source, 'g'))].map((match) => match[0]);
+  }
+
+  it('stops at the backtick that closes an inline code span', () => {
+    // Models wrap an id in backticks, so the URN may end where the code does.
+    expect(matches(`- 新建表 \`test\`（\`urn:catalog/${CATALOG}\`）`)).toEqual([
+      `urn:catalog/${CATALOG}`,
+    ]);
+  });
+
+  it('stops at the punctuation of a Chinese sentence', () => {
+    expect(matches(`见 \`urn:catalog/${CATALOG}\`（\`default\`），下面 2 个 schema：`)).toEqual([
+      `urn:catalog/${CATALOG}`,
+    ]);
+  });
+
+  it('keeps a URN that sits in plain running text', () => {
+    expect(matches(`The table urn:catalog/${CATALOG}/schema/${SCHEMA} is safe.`)).toEqual([
+      `urn:catalog/${CATALOG}/schema/${SCHEMA}`,
+    ]);
+  });
+
+  it('stops at the comma of a Chinese sentence without a code span', () => {
+    expect(matches(`urn:catalog/${CATALOG}，下面 2 个 schema`)).toEqual([`urn:catalog/${CATALOG}`]);
+  });
+});
+
+describe('urnReferences', () => {
+  it('collects the ids of the objects a text mentions', () => {
+    const text = `See \`urn:catalog/${CATALOG}/schema/${SCHEMA}/table/${TABLE}\`.`;
+
+    expect(urnReferences(text)).toEqual([{ type: 'table', id: TABLE }]);
+  });
+
+  it('skips the entries whose id is not a UUID', () => {
+    // A shortened id cannot be sent to the lookup, so it must not be collected:
+    // the pattern stops at the ellipsis, and the fragment is rejected here.
+    expect(urnReferences(`urn:catalog/${CATALOG.slice(0, 8)}…`)).toEqual([]);
+  });
+
+  it('drops a URN the pattern read past the code span', () => {
+    // The regression: the id carried the closing backtick and the sentence, so
+    // the lookup answered 422 for every id of the message.
+    const text = `- \`urn:catalog/${CATALOG}/schema/${SCHEMA}/table/${TABLE}\`（\`customers\`）`;
+
+    expect(urnReferences(text)).toEqual([{ type: 'table', id: TABLE }]);
+  });
+});
+
 describe('remarkUrnLinks', () => {
   /** Applies the plugin to a heading node holding the given text. */
   function transform(text: string): Node {
@@ -141,6 +195,17 @@ describe('remarkUrnLinks', () => {
       type: 'link',
       url: `/catalog/${CATALOG}`,
     });
+  });
+
+  it('does not glue a following parenthesis onto the URN', () => {
+    // A model often names the object right after the id, so the delimiter must
+    // end the URN instead of becoming part of the last segment.
+    const tree = transform(`See urn:catalog/${CATALOG}（\`default\`），then continue.`);
+
+    const paragraph = tree.children?.[0];
+    const link = paragraph?.children?.find((node) => node.type === 'link');
+    expect(link?.url).toBe(`/catalog/${CATALOG}`);
+    expect(link?.title).toBe(`urn:catalog/${CATALOG}`);
   });
 
   it('leaves inline code that is not a URN alone', () => {

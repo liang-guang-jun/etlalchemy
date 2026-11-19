@@ -6,14 +6,13 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from uuid import UUID, uuid4
 
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-
 from etlalchemy.conversation.application import ConversationApplication, ConversationOptions
 from etlalchemy.conversation.ports.authorization import SessionUser
 from etlalchemy.conversation.projection.projection import run_conversation_projection
 from etlalchemy.conversation.projection.sqlalchemy import SQLAlchemyConversationView
 from etlalchemy.conversation.projection.view import ConversationView
 from etlalchemy.iam.aggregates.errors import AuthenticationError
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 
 TRACKING_TABLE = "conversation_projection_tracking"
 """Tracking table both the view and the projection runner use."""

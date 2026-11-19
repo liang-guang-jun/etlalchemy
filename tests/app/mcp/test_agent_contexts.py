@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import pathlib
-import time
-from collections.abc import Callable
 from typing import Any
-
-from dependency_injector import providers
 
 from etlalchemy.app.bootstrap import Container
 from etlalchemy.app.mcp.server import MCPServer
+
 from tests.app.mcp.support import (
     call_tool,
     list_resource_templates,
@@ -48,7 +44,7 @@ async def test_agent_contexts_register_their_primitives(server: MCPServer) -> No
     resources = {str(resource.uri) for resource in await list_resources(server)}
     templates = {template.uri_template for template in await list_resource_templates(server)}
 
-    assert AGENT_TOOLS <= tools
+    assert tools >= AGENT_TOOLS
     assert "llm:///providers" in resources
     assert "llm:///{provider_id}" in templates
 

@@ -10,18 +10,12 @@ differs.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from eventsourcing.asyncio.sqlalchemy import (
-    AsyncSQLAlchemyDatastore,
-    AsyncSQLAlchemyTrackingRecorder,
-)
-from sqlalchemy import Select, and_, delete, func, or_, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy import and_, delete, func, or_, select, update
 
+from etlalchemy.shared.persistence import AsyncCoreView, ensure_column, utc_now
 from etlalchemy.vocabulary.projection.tables import (
     metadata,
     vocabulary_domains,
@@ -39,15 +33,7 @@ from etlalchemy.vocabulary.projection.view import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from eventsourcing.persistence import Tracking
-    from sqlalchemy import Table
-
-
-def _now() -> datetime:
-    """Returns the current UTC timestamp written by soft deletes."""
-    return datetime.now(UTC)
 
 
 def _escape_like(value: str) -> str:
@@ -55,53 +41,20 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-class SQLAlchemyVocabularyView(AsyncSQLAlchemyTrackingRecorder, VocabularyView):
+class SQLAlchemyVocabularyView(AsyncCoreView, VocabularyView):
     """Asynchronous materialised view of the vocabulary aggregates."""
 
-    async def create_table(self) -> None:
-        """Creates the tracking table and the view tables if they do not exist."""
-        async with self.datastore.transaction() as conn:
-            await conn.run_sync(metadata.create_all)
-            await conn.run_sync(self.datastore.metadata.create_all)
-            await self._ensure_term_color_column(conn)
+    view_metadata = metadata
 
-    async def _ensure_term_color_column(self, conn: Any) -> None:
-        """Adds the ``color`` column to a vocabulary term table created without it."""
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            result = await conn.exec_driver_sql("PRAGMA table_info(vocabulary_terms)")
-            existing = {str(row._mapping["name"]) for row in result.fetchall()}
-            if "color" not in existing:
-                await conn.exec_driver_sql(
-                    "ALTER TABLE vocabulary_terms ADD COLUMN color TEXT NOT NULL DEFAULT ''"
-                )
-            return
-        await conn.exec_driver_sql(
-            "ALTER TABLE vocabulary_terms ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT ''"
+    async def migrate(self, conn: Any) -> None:
+        """Adds ``color`` to a term table created before terms had a colour."""
+        await ensure_column(
+            conn,
+            self.datastore.dialect_name,
+            "vocabulary_terms",
+            "color",
+            "TEXT NOT NULL DEFAULT ''",
         )
-
-    def _insert(self, table: Table) -> Any:
-        """Returns the upsert construct of the configured dialect."""
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            return sqlite_insert(table)
-        return pg_insert(table)
-
-    async def _write(self, statements: Sequence[Any], tracking: Tracking) -> None:
-        """Applies the statements and records the tracking row atomically."""
-        async with self.transaction() as conn:
-            for statement in statements:
-                await conn.execute(statement)
-            await self.insert_tracking_in_transaction(conn, tracking)
-
-    async def _fetch_all(self, statement: Select[Any]) -> Sequence[Any]:
-        """Executes a read statement and returns all rows."""
-        async with self.datastore.connection() as conn:
-            rows: Sequence[Any] = (await conn.execute(statement)).all()
-            return rows
-
-    async def _fetch_one(self, statement: Select[Any]) -> Any:
-        """Executes a read statement and returns the first row, or ``None``."""
-        async with self.datastore.connection() as conn:
-            return (await conn.execute(statement)).first()
 
     # -- domain -------------------------------------------------------------
 
@@ -113,7 +66,7 @@ class SQLAlchemyVocabularyView(AsyncSQLAlchemyTrackingRecorder, VocabularyView):
         tracking: Tracking,
     ) -> None:
         """Registers a domain in the view."""
-        statement = self._insert(vocabulary_domains).values(
+        statement = self._dialect_insert(vocabulary_domains).values(
             domain_id=domain_id,
             name=name,
             description=description,
@@ -153,7 +106,7 @@ class SQLAlchemyVocabularyView(AsyncSQLAlchemyTrackingRecorder, VocabularyView):
 
     async def discard_domain(self, domain_id: UUID, tracking: Tracking) -> None:
         """Marks a domain, its terms and their children as discarded."""
-        discarded_at = _now()
+        discarded_at = utc_now()
         term_ids = select(vocabulary_terms.c.term_id).where(
             vocabulary_terms.c.domain_id == domain_id
         )
@@ -206,7 +159,7 @@ class SQLAlchemyVocabularyView(AsyncSQLAlchemyTrackingRecorder, VocabularyView):
         color: str = "",
     ) -> None:
         """Registers a term and its aliases in the view."""
-        statement = self._insert(vocabulary_terms).values(
+        statement = self._dialect_insert(vocabulary_terms).values(
             term_id=term_id,
             domain_id=domain_id,
             parent_id=parent_id,
@@ -235,7 +188,7 @@ class SQLAlchemyVocabularyView(AsyncSQLAlchemyTrackingRecorder, VocabularyView):
             statement,
         ]
         statements.extend(
-            self._insert(vocabulary_term_aliases)
+            self._dialect_insert(vocabulary_term_aliases)
             .values(term_id=term_id, alias=alias)
             .on_conflict_do_nothing()
             for alias in aliases
@@ -298,7 +251,7 @@ class SQLAlchemyVocabularyView(AsyncSQLAlchemyTrackingRecorder, VocabularyView):
     async def add_term_alias(self, term_id: UUID, alias: str, tracking: Tracking) -> None:
         """Adds an alias to a term in the view."""
         statement = (
-            self._insert(vocabulary_term_aliases)
+            self._dialect_insert(vocabulary_term_aliases)
             .values(term_id=term_id, alias=alias)
             .on_conflict_do_nothing()
         )
@@ -340,7 +293,7 @@ class SQLAlchemyVocabularyView(AsyncSQLAlchemyTrackingRecorder, VocabularyView):
                 vocabulary_terms.c.term_id == term_id,
                 vocabulary_terms.c.discarded_at.is_(None),
             )
-            .values(discarded_at=_now()),
+            .values(discarded_at=utc_now()),
         ]
         await self._write(statements, tracking)
 
@@ -451,7 +404,7 @@ class SQLAlchemyVocabularyView(AsyncSQLAlchemyTrackingRecorder, VocabularyView):
     ) -> None:
         """Records a catalog link of a term in the view."""
         statement = (
-            self._insert(vocabulary_term_links)
+            self._dialect_insert(vocabulary_term_links)
             .values(
                 term_id=term_id,
                 target_id=target_id,

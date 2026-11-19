@@ -5,13 +5,13 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-
 from etlalchemy.iam.aggregates.errors import PermissionDeniedError
 from etlalchemy.llm_config.aggregates.errors import (
     DuplicateProviderNameError,
     ProviderCredentialError,
     UnknownProviderError,
 )
+
 from tests.llm_config.support import FakeAuthorization, FakeSecrets, running_llm_config
 
 TENANT = uuid4()

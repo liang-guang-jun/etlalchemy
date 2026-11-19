@@ -11,17 +11,10 @@ the column migration differ.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from eventsourcing.asyncio.sqlalchemy import (
-    AsyncSQLAlchemyDatastore,
-    AsyncSQLAlchemyTrackingRecorder,
-)
-from sqlalchemy import Select, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy import select, update
 
 from etlalchemy.ingestion.projection.tables import (
     ingestion_connections,
@@ -34,74 +27,30 @@ from etlalchemy.ingestion.projection.view import (
     IngestionView,
     as_uuid,
 )
+from etlalchemy.shared.persistence import AsyncCoreView, ensure_column, utc_now
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from eventsourcing.persistence import Tracking
-    from sqlalchemy import Table
-    from sqlalchemy.ext.asyncio import AsyncConnection
 
 IMPORT_RUN_COLUMNS = ("include_tables", "schema_mapping")
 """Columns added to ``ingestion_import_runs`` after the first release."""
 
 
-def _now() -> datetime:
-    """Returns the current UTC timestamp written by the read model."""
-    return datetime.now(UTC)
-
-
-class SQLAlchemyIngestionView(AsyncSQLAlchemyTrackingRecorder, IngestionView):
+class SQLAlchemyIngestionView(AsyncCoreView, IngestionView):
     """Asynchronous materialised view of the ingestion aggregates."""
 
-    async def create_table(self) -> None:
-        """Creates the tracking table and the view tables if they do not exist."""
-        async with self.datastore.transaction() as conn:
-            await conn.run_sync(metadata.create_all)
-            await conn.run_sync(self.datastore.metadata.create_all)
-            await self._ensure_import_run_columns(conn)
+    view_metadata = metadata
 
-    async def _ensure_import_run_columns(self, conn: AsyncConnection) -> None:
+    async def migrate(self, conn: Any) -> None:
         """Adds the filter and mapping columns to an existing import run table."""
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            result = await conn.exec_driver_sql("PRAGMA table_info(ingestion_import_runs)")
-            existing = {str(row._mapping["name"]) for row in result.fetchall()}
-            for column in IMPORT_RUN_COLUMNS:
-                if column not in existing:
-                    await conn.exec_driver_sql(
-                        f"ALTER TABLE ingestion_import_runs "
-                        f"ADD COLUMN {column} TEXT NOT NULL DEFAULT '{{}}'"
-                    )
-            return
         for column in IMPORT_RUN_COLUMNS:
-            await conn.exec_driver_sql(
-                f"ALTER TABLE ingestion_import_runs "
-                f"ADD COLUMN IF NOT EXISTS {column} TEXT NOT NULL DEFAULT '{{}}'"
+            await ensure_column(
+                conn,
+                self.datastore.dialect_name,
+                "ingestion_import_runs",
+                column,
+                "TEXT NOT NULL DEFAULT '{}'",
             )
-
-    def _insert(self, table: Table) -> Any:
-        """Returns the upsert construct of the configured dialect."""
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            return sqlite_insert(table)
-        return pg_insert(table)
-
-    async def _write(self, statements: Sequence[Any], tracking: Tracking) -> None:
-        """Applies the statements and records the tracking row atomically."""
-        async with self.transaction() as conn:
-            for statement in statements:
-                await conn.execute(statement)
-            await self.insert_tracking_in_transaction(conn, tracking)
-
-    async def _fetch_all(self, statement: Select[Any]) -> Sequence[Any]:
-        """Executes a read statement and returns all rows."""
-        async with self.datastore.connection() as conn:
-            rows: Sequence[Any] = (await conn.execute(statement)).all()
-            return rows
-
-    async def _fetch_one(self, statement: Select[Any]) -> Any:
-        """Executes a read statement and returns the first row, or ``None``."""
-        async with self.datastore.connection() as conn:
-            return (await conn.execute(statement)).first()
 
     async def register_connection(
         self,
@@ -116,7 +65,7 @@ class SQLAlchemyIngestionView(AsyncSQLAlchemyTrackingRecorder, IngestionView):
         tracking: Tracking,
     ) -> None:
         """Registers a connection in the view."""
-        statement = self._insert(ingestion_connections).values(
+        statement = self._dialect_insert(ingestion_connections).values(
             connection_id=connection_id,
             name=name,
             kind=kind,
@@ -193,7 +142,7 @@ class SQLAlchemyIngestionView(AsyncSQLAlchemyTrackingRecorder, IngestionView):
         statement = (
             update(ingestion_connections)
             .where(ingestion_connections.c.connection_id == connection_id)
-            .values(discarded_at=_now())
+            .values(discarded_at=utc_now())
         )
         await self._write([statement], tracking)
 
@@ -248,7 +197,7 @@ class SQLAlchemyIngestionView(AsyncSQLAlchemyTrackingRecorder, IngestionView):
         tracking: Tracking,
     ) -> None:
         """Registers a run in the view with status ``pending``."""
-        statement = self._insert(ingestion_import_runs).values(
+        statement = self._dialect_insert(ingestion_import_runs).values(
             run_id=run_id,
             connection_id=connection_id,
             target_catalog_id=target_catalog_id,
@@ -261,7 +210,7 @@ class SQLAlchemyIngestionView(AsyncSQLAlchemyTrackingRecorder, IngestionView):
             table_count=0,
             field_count=0,
             error=None,
-            created_at=_now(),
+            created_at=utc_now(),
         )
         statement = statement.on_conflict_do_update(
             index_elements=[ingestion_import_runs.c.run_id],

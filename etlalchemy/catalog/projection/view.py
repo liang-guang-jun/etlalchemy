@@ -10,11 +10,7 @@ from eventsourcing.asyncio.persistence import AsyncTrackingRecorder
 from eventsourcing.persistence import Tracking
 
 from etlalchemy.catalog.aggregates.types import DataType
-
-
-def as_uuid(value: UUID | str) -> UUID:
-    """Returns the given value as a :class:`UUID`."""
-    return value if isinstance(value, UUID) else UUID(value)
+from etlalchemy.shared.utils import as_uuid as as_uuid
 
 
 @dataclass(frozen=True)

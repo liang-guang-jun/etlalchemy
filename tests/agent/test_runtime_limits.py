@@ -6,12 +6,12 @@ import asyncio
 from typing import Any
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-
 from etlalchemy.agent.mcp.tools import ToolAnnotations, ToolExecutor
 from etlalchemy.agent.runtime import AgentRunner, RunRequest
 from etlalchemy.agent.security.policy import ApprovalPolicy
 from etlalchemy.agent.settings import AgentLimits, AgentRuntimeSettings, ApprovalRule
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
 from tests.agent.support import (
     FakeConversation,
     FakeMcpClient,

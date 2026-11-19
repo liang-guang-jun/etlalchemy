@@ -14,13 +14,13 @@ from uuid import uuid4
 
 import psycopg
 import pytest
-
 from etlalchemy.ingestion.adapters.postgres import PostgresSourceFactory
 from etlalchemy.ingestion.adapters.secrets_composite import CompositeSecretsResolver
 from etlalchemy.ingestion.aggregates.connection import SourceConnection
 from etlalchemy.ingestion.aggregates.import_run import ImportRun
 from etlalchemy.ingestion.application import IngestionApplication
 from etlalchemy.ingestion.ports.secrets import SecretValue
+
 from tests.ingestion.support import (
     FakeCatalogView,
     FakeConnectionsView,

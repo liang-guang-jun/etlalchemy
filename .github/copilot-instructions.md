@@ -20,17 +20,29 @@ changes are picked up without reinstalling.
   - `__init__.py` — re-exports the public API (mypy `no_implicit_reexport`)
 - `etlalchemy/shared/` — infrastructure adapters every context may reuse:
   `logging/`, the process-wide structured logging facade, `projection.py`, the
-  `AsyncLoggedProjection` base every read-model projection extends, and `utils.py`
-  with delivery helpers. It may only import the standard library, `eventsourcing` and
+  `AsyncLoggedProjection` base every read-model projection extends, `persistence.py`
+  with `AsyncCoreView` (the `_write`/`_fetch_all`/`_fetch_one`/`create_table` base and
+  the `migrate` hook every SQLAlchemy view extends, plus `ensure_column` and
+  `utc_now`), `session.py` with the shared `SessionUser`, and `utils.py` with
+  delivery helpers and the shared vocabularies (`as_uuid`, `DEFAULT_TARGET_TYPES`,
+  `PROFILE_KINDS`). It may only import the standard library, `eventsourcing` and
   `structlog`; contexts and the assembly layer may import it, never the other way round
   (`tests/shared/` holds its tests).
 - Assembly layer in `etlalchemy/app/`: `bootstrap/` (the only assembly entry point:
-  `factories.py`, `container.py`, `lifecycle.py` with `run_container`/`api_lifespan`,
-  `settings.py` with `load_app_settings()`, all re-exported by `bootstrap/__init__.py`),
-  `config/` (settings + YAML loader), `api/` (app factory + `routes/<context>.py`),
-  `mcp/` (`registry.py` + a FastMCP server that mounts one package per context:
-  `<context>/{tools,resources,prompts}.py`), `cli/` (typer app and the `server`
-  command), `main.py` (uvicorn entry point).
+  `factories.py`, `contexts.py` with the `ContextSpec` registry, `container.py`,
+  `lifecycle.py` with `run_container`/`api_lifespan`, `settings.py` with
+  `load_app_settings()`, all re-exported by `bootstrap/__init__.py`),
+  `config/` (settings + YAML loader), `api/` (app factory + `routes/<context>.py`
+  + `errors.py`), `mcp/` (`registry.py` + a FastMCP server that mounts one package
+  per context: `<context>/{tools,resources,prompts}.py`), `cli/` (typer app and the
+  `server` command), `main.py` (uvicorn entry point).
+- `bootstrap/contexts.py` is the single registry: `CONTEXT_SPECS` names every
+  context once (`ContextSpec(name, view_factory, application)`), `request_contexts()`
+  resolves the routers and error handlers lazily (the route modules import the
+  container, so they cannot be imported while it is being defined), and the
+  lifecycle, `create_app` and `tests/app/test_postgres_tables.py` all derive from
+  it. Adding a context means one spec entry, its own package and its delivery
+  modules — never an edit in `lifecycle.py` or `api/app.py`.
 - Tests mirror the context: `tests/<context>/...` (see
   [test-layout](./instructions/test-layout.instructions.md))
 - Local infrastructure: `docker/docker-compose.yml` (Postgres 18, host port 55432,
@@ -135,10 +147,16 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pyt
 ## Read model
 
 - Views extend `eventsourcing.asyncio.persistence.AsyncTrackingRecorder` through
-  `AsyncSQLAlchemyTrackingRecorder`; there is exactly one view class per context and
-  it serves SQLite (`aiosqlite`) and PostgreSQL (`psycopg`) alike. Every command
-  awaits `self.transaction()` and writes the view change plus
-  `self.insert_tracking_in_transaction(conn, tracking)` in that one transaction.
+  `AsyncSQLAlchemyTrackingRecorder`, and then through
+  `etlalchemy.shared.persistence.AsyncCoreView`, which supplies `_write`,
+  `_fetch_all`, `_fetch_one` and `create_table`; a view declares `view_metadata`
+  and, when a column was added to an existing table, overrides the `migrate(conn)`
+  hook instead of writing its own `PRAGMA table_info` / `ALTER TABLE` pair (use
+  `ensure_column`). Upserts use the inherited `self._dialect_insert(table)`. There
+  is exactly one view class per context and it serves SQLite (`aiosqlite`) and
+  PostgreSQL (`psycopg`) alike. Every command awaits `self.transaction()` and writes
+  the view change plus `self.insert_tracking_in_transaction(conn, tracking)` in
+  that one transaction.
 - SQLAlchemy Core is allowed only inside `projection/tables.py` and the
   `sqlalchemy.py` view: build DML with the statements of the SQLAlchemy ORM core and
   pick the upsert with `sqlite_insert`/`pg_insert` from `datastore.dialect_name`, then
@@ -209,6 +227,11 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pyt
   .catalog_application()` only constructs the `AsyncApplication`.
 - Routes use `@inject` + `Depends(Provide[Container.<provider>])`; never construct a
   container inside a route.
+- Every route module maps its errors with
+  `etlalchemy.app.api.errors.install_exception_handlers(app, conflict=..., not_found=...,
+  bad_request=..., unauthorized=..., forbidden=...)` from its `add_exception_handlers`;
+  do not add a second `_error_handler` factory. `install_error_handlers(app, status,
+  errors)` is the single-group form.
 - Catalog writes are `POST`/`PATCH`/`DELETE`, addressed as
   `/catalogs/{catalog_id}/schemas/{schema}/tables/{table}/fields/{field_name}` where
   `{schema}` and `{table}` are a name or an id. `PATCH` takes a pydantic body and an

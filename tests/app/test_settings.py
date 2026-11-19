@@ -6,10 +6,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
 from etlalchemy.app.config.loader import CONFIG_FILES_ENV, ConfigError, load_settings
 from etlalchemy.app.config.settings import AppSettings, IamSettings, LlmBootstrapSettings
+from pydantic import ValidationError
 
 
 def test_context_without_override_inherits_global_database(

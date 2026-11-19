@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-
 from etlalchemy.conversation.projection.sqlalchemy import SQLAlchemyConversationView
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 
 
 async def test_an_older_view_gains_the_reasoning_and_preview_columns(

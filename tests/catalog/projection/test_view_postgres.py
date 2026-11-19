@@ -12,13 +12,13 @@ from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
 
 import pytest
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-from eventsourcing.persistence import Tracking
-
 from etlalchemy.catalog.aggregates.types import DataType
 from etlalchemy.catalog.application import CatalogApplication
 from etlalchemy.catalog.projection.projection import run_catalog_projection
 from etlalchemy.catalog.projection.sqlalchemy import SQLAlchemyCatalogView
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
+from eventsourcing.persistence import Tracking
+
 from tests.support import async_env, async_postgres_url
 
 DSN = os.environ.get("TEST_DATABASE_URL") or os.environ.get("ETLALCHEMY_DSN")

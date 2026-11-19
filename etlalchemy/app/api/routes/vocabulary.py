@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
 from uuid import UUID
 
 from dependency_injector.wiring import Provide, inject
 from eventsourcing.application import AggregateNotFoundError
 from eventsourcing.persistence import RecordConflictError
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from etlalchemy.app.api.errors import install_exception_handlers
 from etlalchemy.app.bootstrap import Container
 from etlalchemy.app.schemas.common import OkResponse
 from etlalchemy.app.schemas.vocabulary import (
@@ -48,25 +47,16 @@ NOT_FOUND_ERRORS = (
 )
 
 
-def _error_handler(status_code: int) -> Any:
-    """Builds a handler that renders the error message with the given status."""
-
-    async def handler(request: Request, exc: Exception) -> JSONResponse:
-        return JSONResponse(status_code=status_code, content={"detail": str(exc)})
-
-    return handler
-
-
 def add_exception_handlers(app: FastAPI) -> None:
     """Maps vocabulary errors to HTTP responses."""
     # Starlette resolves handlers through the MRO, so the exact class wins over
     # the VocabularyError base: a malformed colour is a bad request, not a conflict.
-    app.add_exception_handler(InvalidColorError, _error_handler(400))
-    for conflict_error in CONFLICT_ERRORS:
-        app.add_exception_handler(conflict_error, _error_handler(409))
-    for missing_error in NOT_FOUND_ERRORS:
-        app.add_exception_handler(missing_error, _error_handler(404))
-    app.add_exception_handler(ValueError, _error_handler(400))
+    install_exception_handlers(
+        app,
+        conflict=CONFLICT_ERRORS,
+        not_found=NOT_FOUND_ERRORS,
+        bad_request=(InvalidColorError, ValueError),
+    )
 
 
 class DomainCreate(BaseModel):

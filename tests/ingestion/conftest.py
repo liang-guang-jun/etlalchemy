@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 import pytest
-
 from etlalchemy.ingestion.adapters.secrets_composite import CompositeSecretsResolver
 from etlalchemy.ingestion.adapters.secrets_env import EnvSecretsProvider
 from etlalchemy.ingestion.application import IngestionApplication
+
 from tests.ingestion.support import (
     FakeCatalogView,
     FakeConnectionsView,

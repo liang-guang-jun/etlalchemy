@@ -3,7 +3,6 @@
 from typing import Any
 
 import pytest
-
 from etlalchemy.catalog.aggregates.types import DataType
 from etlalchemy.ingestion.adapters import databricks as databricks_module
 from etlalchemy.ingestion.adapters.databricks import (

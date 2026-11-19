@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import pytest
-from structlog.testing import capture_logs
-
 from etlalchemy.semantic.application import ModelApplication
 from etlalchemy.shared.logging import reset_logging
+from structlog.testing import capture_logs
+
 from tests.semantic.support import FakeCatalogView
 
 

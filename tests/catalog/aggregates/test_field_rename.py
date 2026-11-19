@@ -4,7 +4,6 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-
 from etlalchemy.catalog.aggregates.errors import DuplicateFieldError, UnknownFieldError
 from etlalchemy.catalog.aggregates.table import Table
 from etlalchemy.catalog.aggregates.types import DataType

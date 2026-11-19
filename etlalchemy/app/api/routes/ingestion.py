@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any, Self
+from typing import Self
 from uuid import UUID
 
 from dependency_injector.wiring import Provide, inject
 from eventsourcing.persistence import RecordConflictError
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field, model_validator
 
+from etlalchemy.app.api.errors import install_exception_handlers
 from etlalchemy.app.bootstrap import Container
 from etlalchemy.app.schemas.ingestion import (
     ConnectionCreatedResponse,
@@ -32,22 +32,14 @@ CONFLICT_ERRORS = (IngestionError, RecordConflictError)
 NOT_FOUND_ERRORS = (UnknownConnectionError,)
 
 
-def _error_handler(status_code: int) -> Any:
-    """Builds a handler that renders the error message with the given status."""
-
-    async def handler(request: Request, exc: Exception) -> JSONResponse:
-        return JSONResponse(status_code=status_code, content={"detail": str(exc)})
-
-    return handler
-
-
 def add_exception_handlers(app: FastAPI) -> None:
     """Maps ingestion errors to HTTP responses."""
-    for conflict_error in CONFLICT_ERRORS:
-        app.add_exception_handler(conflict_error, _error_handler(409))
-    for missing_error in NOT_FOUND_ERRORS:
-        app.add_exception_handler(missing_error, _error_handler(404))
-    app.add_exception_handler(ValueError, _error_handler(400))
+    install_exception_handlers(
+        app,
+        conflict=CONFLICT_ERRORS,
+        not_found=NOT_FOUND_ERRORS,
+        bad_request=(ValueError,),
+    )
 
 
 class ConnectionCreate(BaseModel):

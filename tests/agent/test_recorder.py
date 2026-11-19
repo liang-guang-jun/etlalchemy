@@ -5,10 +5,16 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-
 from etlalchemy.agent.errors import ToolBudgetExceededError
 from etlalchemy.agent.results import ApprovalRequest, ToolCall
-from etlalchemy.agent.runtime import RunRecorder, RunRequest, _approval_id, _approval_ids, _thread_id
+from etlalchemy.agent.runtime import (
+    RunRecorder,
+    RunRequest,
+    _approval_id,
+    _approval_ids,
+    _thread_id,
+)
+
 from tests.agent.support import FakeConversation, FakeObserver
 
 

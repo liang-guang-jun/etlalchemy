@@ -10,17 +10,11 @@ differs.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from eventsourcing.asyncio.sqlalchemy import (
-    AsyncSQLAlchemyDatastore,
-    AsyncSQLAlchemyTrackingRecorder,
-)
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from sqlalchemy import ColumnElement, Select, delete, func, or_, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from etlalchemy.catalog.aggregates.table import field_identity
 from etlalchemy.catalog.aggregates.types import DataType
@@ -41,62 +35,49 @@ from etlalchemy.catalog.projection.view import (
     TableRow,
     as_uuid,
 )
+from etlalchemy.shared.persistence import AsyncCoreView, ensure_column, utc_now
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from eventsourcing.persistence import Tracking
-    from sqlalchemy import Table
 
 
-def _now() -> datetime:
-    """Returns the current UTC timestamp written by soft deletes."""
-    return datetime.now(UTC)
-
-
-class SQLAlchemyCatalogView(AsyncSQLAlchemyTrackingRecorder, CatalogView):
+class SQLAlchemyCatalogView(AsyncCoreView, CatalogView):
     """Asynchronous materialised view of the catalog aggregates."""
 
-    async def create_table(self) -> None:
-        """Creates the tracking table and the view tables if they do not exist."""
-        async with self.datastore.transaction() as conn:
-            await conn.run_sync(metadata.create_all)
-            await conn.run_sync(self.datastore.metadata.create_all)
-            await self._ensure_table_description_column(conn)
-            await self._ensure_field_id_column(conn)
-            await self._ensure_field_comment_column(conn)
+    view_metadata = metadata
 
-    async def _ensure_table_description_column(self, conn: Any) -> None:
-        """Adds the ``description`` column to a catalog table created without it."""
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            result = await conn.exec_driver_sql("PRAGMA table_info(catalog_tables)")
-            existing = {str(row._mapping["name"]) for row in result.fetchall()}
-            if "description" not in existing:
-                await conn.exec_driver_sql(
-                    "ALTER TABLE catalog_tables ADD COLUMN description TEXT NOT NULL DEFAULT ''"
-                )
-            return
-        await conn.exec_driver_sql(
-            "ALTER TABLE catalog_tables ADD COLUMN IF NOT EXISTS "
-            "description TEXT NOT NULL DEFAULT ''"
+    async def migrate(self, conn: Any) -> None:
+        """Adds the columns an older catalog read model predates."""
+        await ensure_column(
+            conn,
+            self.datastore.dialect_name,
+            "catalog_tables",
+            "description",
+            "TEXT NOT NULL DEFAULT ''",
+        )
+        await ensure_column(
+            conn,
+            self.datastore.dialect_name,
+            "catalog_fields",
+            "field_id",
+            "TEXT" if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE else "UUID",
+        )
+        await self._backfill_field_ids(conn)
+        await ensure_column(
+            conn,
+            self.datastore.dialect_name,
+            "catalog_fields",
+            "comment",
+            "TEXT NOT NULL DEFAULT ''",
         )
 
-    async def _ensure_field_id_column(self, conn: Any) -> None:
-        """Adds ``field_id`` to a field table created before fields had an id.
+    async def _backfill_field_ids(self, conn: Any) -> None:
+        """Gives legacy field rows the derived identity their events replay to.
 
         The column is added nullable — an ``ALTER`` cannot invent a per-row UUID
-        — and every legac row is then given the derived identity its events
-        replay to, so old and new rows agree.
+        — so every legacy row is filled here, which keeps old and new rows
+        agreeing on the same identity.
         """
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            result = await conn.exec_driver_sql("PRAGMA table_info(catalog_fields)")
-            existing = {str(row._mapping["name"]) for row in result.fetchall()}
-            if "field_id" not in existing:
-                await conn.exec_driver_sql("ALTER TABLE catalog_fields ADD COLUMN field_id TEXT")
-        else:
-            await conn.exec_driver_sql(
-                "ALTER TABLE catalog_fields ADD COLUMN IF NOT EXISTS field_id UUID"
-            )
         rows = (
             await conn.execute(
                 select(catalog_fields.c.table_id, catalog_fields.c.name).where(
@@ -114,44 +95,6 @@ class SQLAlchemyCatalogView(AsyncSQLAlchemyTrackingRecorder, CatalogView):
                 .values(field_id=field_identity(as_uuid(row.table_id), row.name))
             )
 
-    async def _ensure_field_comment_column(self, conn: Any) -> None:
-        """Adds ``comment`` to a field table created before fields had one."""
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            result = await conn.exec_driver_sql("PRAGMA table_info(catalog_fields)")
-            existing = {str(row._mapping["name"]) for row in result.fetchall()}
-            if "comment" not in existing:
-                await conn.exec_driver_sql(
-                    "ALTER TABLE catalog_fields ADD COLUMN comment TEXT NOT NULL DEFAULT ''"
-                )
-            return
-        await conn.exec_driver_sql(
-            "ALTER TABLE catalog_fields ADD COLUMN IF NOT EXISTS comment TEXT NOT NULL DEFAULT ''"
-        )
-
-    def _insert(self, table: Table) -> Any:
-        """Returns the upsert construct of the configured dialect."""
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            return sqlite_insert(table)
-        return pg_insert(table)
-
-    async def _write(self, statements: Sequence[Any], tracking: Tracking) -> None:
-        """Applies the statements and records the tracking row atomically."""
-        async with self.transaction() as conn:
-            for statement in statements:
-                await conn.execute(statement)
-            await self.insert_tracking_in_transaction(conn, tracking)
-
-    async def _fetch_all(self, statement: Select[Any]) -> Sequence[Any]:
-        """Executes a read statement and returns all rows."""
-        async with self.datastore.connection() as conn:
-            rows: Sequence[Any] = (await conn.execute(statement)).all()
-            return rows
-
-    async def _fetch_one(self, statement: Select[Any]) -> Any:
-        """Executes a read statement and returns the first row, or ``None``."""
-        async with self.datastore.connection() as conn:
-            return (await conn.execute(statement)).first()
-
     async def register_catalog(
         self,
         catalog_id: UUID,
@@ -160,7 +103,7 @@ class SQLAlchemyCatalogView(AsyncSQLAlchemyTrackingRecorder, CatalogView):
         tracking: Tracking,
     ) -> None:
         """Registers a catalog in the view."""
-        statement = self._insert(catalogs).values(
+        statement = self._dialect_insert(catalogs).values(
             catalog_id=catalog_id,
             name=name,
             description=description,
@@ -198,7 +141,7 @@ class SQLAlchemyCatalogView(AsyncSQLAlchemyTrackingRecorder, CatalogView):
 
     async def discard_catalog(self, catalog_id: UUID, tracking: Tracking) -> None:
         """Marks a catalog, its schemas, their tables and fields as discarded."""
-        discarded_at = _now()
+        discarded_at = utc_now()
         statements = [
             delete(catalog_fields).where(
                 catalog_fields.c.table_id.in_(
@@ -251,7 +194,7 @@ class SQLAlchemyCatalogView(AsyncSQLAlchemyTrackingRecorder, CatalogView):
         tracking: Tracking,
     ) -> None:
         """Registers a schema in the view."""
-        statement = self._insert(catalog_schemas).values(
+        statement = self._dialect_insert(catalog_schemas).values(
             schema_id=schema_id,
             catalog_id=catalog_id,
             name=name,
@@ -314,7 +257,7 @@ class SQLAlchemyCatalogView(AsyncSQLAlchemyTrackingRecorder, CatalogView):
 
     async def _discard_schemas(self, schema_ids: Select[Any], tracking: Tracking) -> None:
         """Discards the schemas selected by ``schema_ids`` and their children."""
-        discarded_at = _now()
+        discarded_at = utc_now()
         statements = [
             delete(catalog_fields).where(
                 catalog_fields.c.table_id.in_(
@@ -348,7 +291,7 @@ class SQLAlchemyCatalogView(AsyncSQLAlchemyTrackingRecorder, CatalogView):
         description: str = "",
     ) -> None:
         """Registers a table in the view."""
-        statement = self._insert(catalog_tables).values(
+        statement = self._dialect_insert(catalog_tables).values(
             table_id=table_id,
             schema_id=schema_id,
             catalog_id=catalog_id,
@@ -409,7 +352,7 @@ class SQLAlchemyCatalogView(AsyncSQLAlchemyTrackingRecorder, CatalogView):
 
     async def _discard_tables(self, table_ids: Select[Any], tracking: Tracking) -> None:
         """Discards the tables selected by ``table_ids`` and drops their fields."""
-        discarded_at = _now()
+        discarded_at = utc_now()
         statements = [
             delete(catalog_fields).where(catalog_fields.c.table_id.in_(table_ids)),
             update(catalog_tables)
@@ -431,7 +374,7 @@ class SQLAlchemyCatalogView(AsyncSQLAlchemyTrackingRecorder, CatalogView):
         field_id: UUID | None = None,
     ) -> None:
         """Adds a field to a table in the view."""
-        statement = self._insert(catalog_fields).values(
+        statement = self._dialect_insert(catalog_fields).values(
             table_id=table_id,
             field_id=field_id or field_identity(table_id, name),
             name=name,
@@ -522,7 +465,7 @@ class SQLAlchemyCatalogView(AsyncSQLAlchemyTrackingRecorder, CatalogView):
                         ),
                     )
                 )
-                statement = self._insert(catalog_fields).values(
+                statement = self._dialect_insert(catalog_fields).values(
                     table_id=table_id,
                     field_id=row.field_id,
                     name=new_name,

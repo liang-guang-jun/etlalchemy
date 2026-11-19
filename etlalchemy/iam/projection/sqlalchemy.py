@@ -12,13 +12,12 @@ single-row tracking table accepts one tracking insert per transaction.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from eventsourcing.asyncio.sqlalchemy import (
     AsyncSQLAlchemyDatastore,
-    AsyncSQLAlchemyTrackingRecorder,
 )
 from sqlalchemy import (
     Select,
@@ -30,8 +29,6 @@ from sqlalchemy import (
     select,
     update,
 )
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from etlalchemy.iam.projection.tables import (
     iam_api_keys,
@@ -66,6 +63,7 @@ from etlalchemy.iam.projection.view import (
     TenantRow,
     UserRow,
 )
+from etlalchemy.shared.persistence import AsyncCoreView, utc_now
 
 if TYPE_CHECKING:  # pragma: no cover
     from collections.abc import Sequence
@@ -73,18 +71,15 @@ if TYPE_CHECKING:  # pragma: no cover
     from eventsourcing.persistence import Tracking
 
 
-def _now() -> datetime:
-    """Returns the current UTC timestamp."""
-    return datetime.now(UTC)
-
-
 def _or_equals(column: Any, values: Sequence[Any]) -> Any:
     """Returns an ``IN`` predicate built from equality disjunctions."""
     return or_(*(column == value for value in values))
 
 
-class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
+class SQLAlchemyIamView(AsyncCoreView, IamView):
     """Asynchronous materialised view of the IAM aggregates."""
+
+    view_metadata = metadata
 
     def __init__(
         self,
@@ -95,18 +90,6 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         """Builds the view and resets its Casbin policy generation counter."""
         super().__init__(datastore, tracking_table=tracking_table)
         self._policy_generation = 0
-
-    async def create_table(self) -> None:
-        """Creates the tracking table and the view tables if they do not exist."""
-        async with self.datastore.transaction() as conn:
-            await conn.run_sync(metadata.create_all)
-            await conn.run_sync(self.datastore.metadata.create_all)
-
-    def _insert(self, table: Table) -> Any:
-        """Returns the upsert construct of the configured dialect."""
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            return sqlite_insert(table)
-        return pg_insert(table)
 
     async def _write(
         self,
@@ -136,17 +119,6 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
             detail=entry.detail,
         )
 
-    async def _fetch_all(self, statement: Select[Any]) -> Sequence[Any]:
-        """Executes a read statement and returns all rows."""
-        async with self.datastore.connection() as conn:
-            rows: Sequence[Any] = (await conn.execute(statement)).all()
-            return rows
-
-    async def _fetch_one(self, statement: Select[Any]) -> Any:
-        """Executes a read statement and returns the first row, or ``None``."""
-        async with self.datastore.connection() as conn:
-            return (await conn.execute(statement)).first()
-
     async def _fetch_scalar(self, statement: Select[Any]) -> int:
         """Executes a scalar read statement and returns an integer."""
         async with self.datastore.connection() as conn:
@@ -169,7 +141,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         audit: AuditEntry | None = None,
     ) -> None:
         """Registers a tenant, clearing a previous discarded marker."""
-        statement = self._insert(iam_tenants).values(
+        statement = self._dialect_insert(iam_tenants).values(
             tenant_id=tenant_id,
             name=name,
             description=description,
@@ -217,7 +189,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         audit: AuditEntry | None = None,
     ) -> None:
         """Discards a tenant and cascades to its members, groups and rules."""
-        now = _now()
+        now = utc_now()
         group_ids = [
             row[0]
             for row in await self._fetch_all(
@@ -290,7 +262,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         tracking: Tracking,
     ) -> None:
         """Registers a tenant membership."""
-        statement = self._insert(iam_tenant_members).values(
+        statement = self._dialect_insert(iam_tenant_members).values(
             tenant_id=tenant_id,
             user_id=user_id,
             joined_at=joined_at,
@@ -439,7 +411,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         tracking: Tracking,
     ) -> None:
         """Registers a user, clearing a previous discarded marker."""
-        statement = self._insert(iam_users).values(
+        statement = self._dialect_insert(iam_users).values(
             user_id=user_id,
             username=username,
             email=email,
@@ -506,7 +478,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
 
     async def discard_user(self, user_id: UUID, tracking: Tracking) -> None:
         """Discards a user and cascades to identities, sessions and rules."""
-        now = _now()
+        now = utc_now()
         statements: list[Any] = [
             update(iam_users).where(iam_users.c.user_id == user_id).values(discarded_at=now),
             update(iam_identities)
@@ -647,7 +619,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         tracking: Tracking,
     ) -> None:
         """Registers an identity, clearing a previous discarded marker."""
-        statement = self._insert(iam_identities).values(
+        statement = self._dialect_insert(iam_identities).values(
             identity_id=identity_id,
             user_id=user_id,
             identity_type=identity_type,
@@ -707,7 +679,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         audit: AuditEntry | None = None,
     ) -> None:
         """Stores the password hash and revokes older sessions."""
-        statement = self._insert(iam_password_creds).values(
+        statement = self._dialect_insert(iam_password_creds).values(
             identity_id=identity_id,
             password_hash=password_hash,
             updated_at=updated_at,
@@ -746,7 +718,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         audit: AuditEntry | None = None,
     ) -> None:
         """Stores the OIDC binding and revokes older sessions."""
-        statement = self._insert(iam_oidc_creds).values(
+        statement = self._dialect_insert(iam_oidc_creds).values(
             identity_id=identity_id,
             provider_id=provider_id,
             issuer=issuer,
@@ -788,7 +760,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         audit: AuditEntry | None = None,
     ) -> None:
         """Discards an identity, its credentials, its keys and its sessions."""
-        now = _now()
+        now = utc_now()
         statements: list[Any] = [
             update(iam_identities)
             .where(iam_identities.c.identity_id == identity_id)
@@ -896,7 +868,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         audit: AuditEntry | None = None,
     ) -> None:
         """Registers an API key."""
-        statement = self._insert(iam_api_keys).values(
+        statement = self._dialect_insert(iam_api_keys).values(
             key_id=key_id,
             identity_id=identity_id,
             user_id=user_id,
@@ -942,7 +914,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         audit: AuditEntry | None = None,
     ) -> None:
         """Moves the old key to ``GRACE``, inserts the new key, revokes old sessions."""
-        statement = self._insert(iam_api_keys).values(
+        statement = self._dialect_insert(iam_api_keys).values(
             key_id=new_key_id,
             identity_id=identity_id,
             user_id=user_id,
@@ -1090,7 +1062,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         tracking: Tracking,
     ) -> None:
         """Registers a session."""
-        statement = self._insert(iam_sessions).values(
+        statement = self._dialect_insert(iam_sessions).values(
             session_id=session_id,
             identity_id=identity_id,
             user_id=user_id,
@@ -1264,7 +1236,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         tracking: Tracking,
     ) -> None:
         """Registers a group, clearing a previous discarded marker."""
-        statement = self._insert(iam_groups).values(
+        statement = self._dialect_insert(iam_groups).values(
             group_id=group_id,
             tenant_id=tenant_id,
             name=name,
@@ -1324,7 +1296,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
 
     async def discard_groups(self, group_ids: list[UUID], tracking: Tracking) -> None:
         """Discards the given groups together with their members and rules."""
-        now = _now()
+        now = utc_now()
         await self._write(self._group_discard_statements(group_ids, now), tracking)
 
     async def get_group(self, group_id: UUID) -> GroupRow | None:
@@ -1399,7 +1371,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         tracking: Tracking,
     ) -> None:
         """Adds a member to a group and writes its ``g`` rule."""
-        statement = self._insert(iam_group_members).values(
+        statement = self._dialect_insert(iam_group_members).values(
             group_id=group_id,
             member_id=member_id,
             member_kind=member_kind,
@@ -1412,7 +1384,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
                 iam_group_members.c.member_kind,
             ],
         )
-        rule = self._insert(iam_casbin_rules).values(
+        rule = self._dialect_insert(iam_casbin_rules).values(
             ptype="g",
             v0=str(member_id),
             v1=str(group_id),
@@ -1492,7 +1464,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         tracking: Tracking,
     ) -> None:
         """Registers a permission grant and writes its ``p`` rule."""
-        statement = self._insert(iam_permission_grants).values(
+        statement = self._dialect_insert(iam_permission_grants).values(
             group_id=group_id,
             tenant_id=tenant_id,
             object=obj,
@@ -1506,7 +1478,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
                 iam_permission_grants.c.action,
             ],
         )
-        rule = self._insert(iam_casbin_rules).values(
+        rule = self._dialect_insert(iam_casbin_rules).values(
             ptype="p",
             v0=str(group_id),
             v1=str(tenant_id),
@@ -1589,7 +1561,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
         audit: AuditEntry | None = None,
     ) -> None:
         """Registers an auth provider, clearing a previous discarded marker."""
-        statement = self._insert(iam_auth_providers).values(
+        statement = self._dialect_insert(iam_auth_providers).values(
             provider_id=provider_id,
             provider_key=provider_key,
             kind=kind,
@@ -1666,7 +1638,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
             [
                 update(iam_auth_providers)
                 .where(iam_auth_providers.c.provider_id == provider_id)
-                .values(discarded_at=_now()),
+                .values(discarded_at=utc_now()),
             ],
             tracking,
             audit,
@@ -1734,7 +1706,7 @@ class SQLAlchemyIamView(AsyncSQLAlchemyTrackingRecorder, IamView):
     ) -> None:
         """Inserts Casbin rules, ignoring rules that already exist."""
         statements = [
-            self._insert(iam_casbin_rules)
+            self._dialect_insert(iam_casbin_rules)
             .values(ptype=rule.ptype, v0=rule.v0, v1=rule.v1, v2=rule.v2, v3=rule.v3)
             .on_conflict_do_nothing(
                 index_elements=[

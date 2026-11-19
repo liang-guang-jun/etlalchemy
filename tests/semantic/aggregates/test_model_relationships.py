@@ -6,7 +6,6 @@ from dataclasses import FrozenInstanceError
 from uuid import uuid4
 
 import pytest
-
 from etlalchemy.semantic.aggregates.errors import (
     DiscardedError,
     DuplicateRelationshipError,

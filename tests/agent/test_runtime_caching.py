@@ -6,12 +6,12 @@ import asyncio
 from typing import Any
 from uuid import uuid4
 
+from etlalchemy.agent.runtime import AgentRunner, RunRequest
+from etlalchemy.agent.settings import AgentLimits, AgentRuntimeSettings
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
-from etlalchemy.agent.runtime import AgentRunner, RunRequest
-from etlalchemy.agent.settings import AgentLimits, AgentRuntimeSettings
 from tests.agent.support import FakeConversation, FakeMcpClient, RecordingModel
 
 

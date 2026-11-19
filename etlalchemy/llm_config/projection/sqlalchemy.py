@@ -11,17 +11,11 @@ differs.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from eventsourcing.asyncio.sqlalchemy import (
-    AsyncSQLAlchemyDatastore,
-    AsyncSQLAlchemyTrackingRecorder,
-)
 from sqlalchemy import Select, and_, delete, or_, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from etlalchemy.llm_config.projection.tables import (
     llm_config_provider_defaults,
@@ -36,52 +30,17 @@ from etlalchemy.llm_config.projection.view import (
     ProviderShareRow,
     as_uuid,
 )
+from etlalchemy.shared.persistence import AsyncCoreView, utc_now
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from eventsourcing.persistence import Tracking
-    from sqlalchemy import Table
     from sqlalchemy.sql import ColumnElement
 
 
-def _now() -> datetime:
-    """Returns the current UTC timestamp written by the read model."""
-    return datetime.now(UTC)
-
-
-class SQLAlchemyLlmProviderView(AsyncSQLAlchemyTrackingRecorder, LlmProviderView):
+class SQLAlchemyLlmProviderView(AsyncCoreView, LlmProviderView):
     """Asynchronous materialised view of the LLM provider aggregate."""
 
-    async def create_table(self) -> None:
-        """Creates the tracking table and the view tables if they do not exist."""
-        async with self.datastore.transaction() as conn:
-            await conn.run_sync(metadata.create_all)
-            await conn.run_sync(self.datastore.metadata.create_all)
-
-    def _insert(self, table: Table) -> Any:
-        """Returns the upsert construct of the configured dialect."""
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            return sqlite_insert(table)
-        return pg_insert(table)
-
-    async def _write(self, statements: Sequence[Any], tracking: Tracking) -> None:
-        """Applies the statements and records the tracking row atomically."""
-        async with self.transaction() as conn:
-            for statement in statements:
-                await conn.execute(statement)
-            await self.insert_tracking_in_transaction(conn, tracking)
-
-    async def _fetch_all(self, statement: Select[Any]) -> Sequence[Any]:
-        """Executes a read statement and returns all rows."""
-        async with self.datastore.connection() as conn:
-            rows: Sequence[Any] = (await conn.execute(statement)).all()
-            return rows
-
-    async def _fetch_one(self, statement: Select[Any]) -> Any:
-        """Executes a read statement and returns the first row, or ``None``."""
-        async with self.datastore.connection() as conn:
-            return (await conn.execute(statement)).first()
+    view_metadata = metadata
 
     # -- writes -------------------------------------------------------------
 
@@ -102,7 +61,7 @@ class SQLAlchemyLlmProviderView(AsyncSQLAlchemyTrackingRecorder, LlmProviderView
         tracking: Tracking,
     ) -> None:
         """Registers a provider, clearing a previous discarded marker."""
-        statement = self._insert(llm_config_providers).values(
+        statement = self._dialect_insert(llm_config_providers).values(
             provider_id=provider_id,
             name=name,
             kind=kind,
@@ -203,7 +162,7 @@ class SQLAlchemyLlmProviderView(AsyncSQLAlchemyTrackingRecorder, LlmProviderView
         ]
         for scope, target_ids in (("user", user_ids), ("group", group_ids)):
             for target_id in dict.fromkeys(target_ids):
-                insert = self._insert(llm_config_provider_shares).values(
+                insert = self._dialect_insert(llm_config_provider_shares).values(
                     provider_id=provider_id,
                     scope=scope,
                     target_id=target_id,
@@ -245,7 +204,7 @@ class SQLAlchemyLlmProviderView(AsyncSQLAlchemyTrackingRecorder, LlmProviderView
                 tracking,
             )
             return
-        insert = self._insert(llm_config_provider_defaults).values(
+        insert = self._dialect_insert(llm_config_provider_defaults).values(
             provider_id=provider_id,
             scope=scope,
             target_id=target_id,
@@ -266,7 +225,7 @@ class SQLAlchemyLlmProviderView(AsyncSQLAlchemyTrackingRecorder, LlmProviderView
     async def discard_provider(self, provider_id: UUID, tracking: Tracking) -> None:
         """Soft-deletes a provider and drops its shares and default pointers."""
         statements: list[Any] = [
-            self._update(provider_id, discarded_at=_now(), is_system_default=False),
+            self._update(provider_id, discarded_at=utc_now(), is_system_default=False),
             delete(llm_config_provider_shares).where(
                 llm_config_provider_shares.c.provider_id == provider_id
             ),

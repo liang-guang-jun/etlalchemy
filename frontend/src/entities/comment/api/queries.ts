@@ -55,7 +55,9 @@ export function useOpenThreadCount(targetType: string, targetId: string): number
  * Describes the targets of a list, e.g. the rows of the inbox.
  *
  * The key is the sorted set of references, so two lists with the same targets
- * share one request whatever order they arrive in.
+ * share one request whatever order they arrive in. The lookup only supplies the
+ * display name of an object, so a failure stays silent: the caller renders the
+ * shortened id instead, which is exactly what it shows while the query loads.
  *
  * @param refs Targets to describe.
  * @returns The query result of `POST /comments/targets/lookup`.
@@ -66,6 +68,7 @@ export function useTargets(refs: readonly TargetReference[]) {
     queryKey: [...commentKeys.all, 'targets', keys],
     queryFn: () => fetchTargets(refs),
     enabled: refs.length > 0,
+    meta: { silent: true },
   });
 }
 

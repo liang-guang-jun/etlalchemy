@@ -4,7 +4,6 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-
 from etlalchemy.catalog.aggregates.catalog import Catalog
 from etlalchemy.catalog.aggregates.errors import DiscardedError
 from etlalchemy.catalog.aggregates.schema import Schema

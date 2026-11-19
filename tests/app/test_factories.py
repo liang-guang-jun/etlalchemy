@@ -8,8 +8,6 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-
 from etlalchemy.app.bootstrap.factories import (
     CatalogViewFactory,
     CommentViewFactory,
@@ -37,6 +35,7 @@ from etlalchemy.ingestion.adapters.secrets_composite import CompositeSecretsReso
 from etlalchemy.ingestion.projection.sqlalchemy import SQLAlchemyIngestionView
 from etlalchemy.semantic.projection.sqlalchemy import SQLAlchemySemanticView
 from etlalchemy.vocabulary.projection.sqlalchemy import SQLAlchemyVocabularyView
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 
 
 async def test_datastore_factory_builds_sqlite(tmp_path: Path) -> None:

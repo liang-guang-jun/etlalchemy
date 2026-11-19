@@ -10,17 +10,11 @@ differs.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from eventsourcing.asyncio.sqlalchemy import (
-    AsyncSQLAlchemyDatastore,
-    AsyncSQLAlchemyTrackingRecorder,
-)
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 from sqlalchemy import Select, delete, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from etlalchemy.semantic.aggregates.model import entity_identity
 from etlalchemy.semantic.aggregates.types import ALL_DIAGRAM
@@ -43,17 +37,12 @@ from etlalchemy.semantic.projection.view import (
     SemanticView,
     as_uuid,
 )
+from etlalchemy.shared.persistence import AsyncCoreView, ensure_column, utc_now
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from eventsourcing.persistence import Tracking
-    from sqlalchemy import Table
-
-
-def _now() -> datetime:
-    """Returns the current UTC timestamp written by soft deletes."""
-    return datetime.now(UTC)
 
 
 def _relationship_ids_of(model_id: UUID) -> Select[Any]:
@@ -71,33 +60,29 @@ def _referencing_relationship_ids(model_id: UUID, entity_name: str) -> Select[An
     )
 
 
-class SQLAlchemySemanticView(AsyncSQLAlchemyTrackingRecorder, SemanticView):
+class SQLAlchemySemanticView(AsyncCoreView, SemanticView):
     """Asynchronous materialised view of the semantic aggregates."""
 
-    async def create_table(self) -> None:
-        """Creates the tracking table and the view tables if they do not exist."""
-        async with self.datastore.transaction() as conn:
-            await conn.run_sync(metadata.create_all)
-            await conn.run_sync(self.datastore.metadata.create_all)
-            await self._ensure_entity_id_column(conn)
+    view_metadata = metadata
 
-    async def _ensure_entity_id_column(self, conn: Any) -> None:
+    async def migrate(self, conn: Any) -> None:
         """Adds ``entity_id`` to an entity table created before entities had an id.
 
-        The column is added nullable and every legacy row is then given the
-        derived identity its events replay to, so old and new rows agree.
+        The column is added nullable — an ``ALTER`` cannot invent a per-row UUID
+        — and every legacy row is then given the derived identity its events
+        replay to, so old and new rows agree.
         """
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            result = await conn.exec_driver_sql("PRAGMA table_info(semantic_entities)")
-            existing = {str(row._mapping["name"]) for row in result.fetchall()}
-            if "entity_id" not in existing:
-                await conn.exec_driver_sql(
-                    "ALTER TABLE semantic_entities ADD COLUMN entity_id TEXT"
-                )
-        else:
-            await conn.exec_driver_sql(
-                "ALTER TABLE semantic_entities ADD COLUMN IF NOT EXISTS entity_id UUID"
-            )
+        await ensure_column(
+            conn,
+            self.datastore.dialect_name,
+            "semantic_entities",
+            "entity_id",
+            "TEXT" if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE else "UUID",
+        )
+        await self._backfill_entity_ids(conn)
+
+    async def _backfill_entity_ids(self, conn: Any) -> None:
+        """Gives legacy entity rows the derived identity their events replay to."""
         rows = (
             await conn.execute(
                 select(semantic_entities.c.model_id, semantic_entities.c.name).where(
@@ -115,30 +100,6 @@ class SQLAlchemySemanticView(AsyncSQLAlchemyTrackingRecorder, SemanticView):
                 .values(entity_id=entity_identity(as_uuid(row.model_id), str(row.name)))
             )
 
-    def _insert(self, table: Table) -> Any:
-        """Returns the upsert construct of the configured dialect."""
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            return sqlite_insert(table)
-        return pg_insert(table)
-
-    async def _write(self, statements: Sequence[Any], tracking: Tracking) -> None:
-        """Applies the statements and records the tracking row atomically."""
-        async with self.transaction() as conn:
-            for statement in statements:
-                await conn.execute(statement)
-            await self.insert_tracking_in_transaction(conn, tracking)
-
-    async def _fetch_all(self, statement: Select[Any]) -> Sequence[Any]:
-        """Executes a read statement and returns all rows."""
-        async with self.datastore.connection() as conn:
-            rows: Sequence[Any] = (await conn.execute(statement)).all()
-            return rows
-
-    async def _fetch_one(self, statement: Select[Any]) -> Any:
-        """Executes a read statement and returns the first row, or ``None``."""
-        async with self.datastore.connection() as conn:
-            return (await conn.execute(statement)).first()
-
     # -- models -------------------------------------------------------------
 
     async def register_model(
@@ -149,7 +110,7 @@ class SQLAlchemySemanticView(AsyncSQLAlchemyTrackingRecorder, SemanticView):
         tracking: Tracking,
     ) -> None:
         """Registers a model and its All diagram in one transaction."""
-        statement = self._insert(semantic_models).values(
+        statement = self._dialect_insert(semantic_models).values(
             model_id=model_id,
             name=name,
             description=description,
@@ -199,7 +160,7 @@ class SQLAlchemySemanticView(AsyncSQLAlchemyTrackingRecorder, SemanticView):
             delete(semantic_entities).where(semantic_entities.c.model_id == model_id),
             update(semantic_models)
             .where(semantic_models.c.model_id == model_id)
-            .values(discarded_at=_now()),
+            .values(discarded_at=utc_now()),
         ]
         await self._write(statements, tracking)
 
@@ -235,7 +196,7 @@ class SQLAlchemySemanticView(AsyncSQLAlchemyTrackingRecorder, SemanticView):
         entity_id: UUID | None = None,
     ) -> None:
         """Registers an entity and places its node on the All diagram."""
-        statement = self._insert(semantic_entities).values(
+        statement = self._dialect_insert(semantic_entities).values(
             model_id=model_id,
             entity_id=entity_id or entity_identity(model_id, name),
             name=name,
@@ -376,7 +337,7 @@ class SQLAlchemySemanticView(AsyncSQLAlchemyTrackingRecorder, SemanticView):
         tracking: Tracking,
     ) -> None:
         """Registers a relationship and its field references in the view."""
-        statement = self._insert(semantic_relationships).values(
+        statement = self._dialect_insert(semantic_relationships).values(
             relationship_id=relationship_id,
             model_id=model_id,
             cardinality=cardinality,
@@ -657,7 +618,7 @@ class SQLAlchemySemanticView(AsyncSQLAlchemyTrackingRecorder, SemanticView):
 
     def _diagram_upsert(self, model_id: UUID, name: str, order: int) -> Any:
         """Returns the upsert of a diagram row."""
-        statement = self._insert(semantic_diagrams).values(
+        statement = self._dialect_insert(semantic_diagrams).values(
             model_id=model_id,
             name=name,
             order=order,
@@ -676,7 +637,7 @@ class SQLAlchemySemanticView(AsyncSQLAlchemyTrackingRecorder, SemanticView):
         y: float,
     ) -> Any:
         """Returns the upsert of a node row."""
-        statement = self._insert(semantic_nodes).values(
+        statement = self._dialect_insert(semantic_nodes).values(
             model_id=model_id,
             diagram_name=diagram_name,
             entity_name=entity_name,

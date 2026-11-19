@@ -21,10 +21,24 @@ const TOAST_TTL_MS = 5_000;
 export const useToastStore = create<ToastState>((set) => ({
   items: [],
   push: (kind, message) => {
-    const id = crypto.randomUUID();
-    set((state) => ({ items: [...state.items, { id, kind, message }] }));
+    // One failing lookup can report the same message once per affected row, so a
+    // visible toast absorbs the repeats instead of stacking a wall of them. The
+    // TTL of the first one still decides when the message goes away.
+    const created: ToastItem[] = [];
+    set((state) => {
+      if (state.items.some((item) => item.kind === kind && item.message === message)) {
+        return state;
+      }
+      const item: ToastItem = { id: crypto.randomUUID(), kind, message };
+      created.push(item);
+      return { items: [...state.items, item] };
+    });
+    const added = created[0];
+    if (added === undefined) {
+      return;
+    }
     window.setTimeout(() => {
-      useToastStore.getState().dismiss(id);
+      useToastStore.getState().dismiss(added.id);
     }, TOAST_TTL_MS);
   },
   dismiss: (id) => {

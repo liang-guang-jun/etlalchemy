@@ -21,6 +21,7 @@ from etlalchemy.app.bootstrap.factories import (
     VocabularyViewFactory,
     build_agent_factory,
     build_datastore,
+    context_datastore_lifecycle,
     datastore_lifecycle,
     get_agent_runtime_settings,
     get_catalog_env,
@@ -131,8 +132,9 @@ class Container(containers.DeclarativeContainer):
         ),
     )
     catalog_datastore_lifecycle: providers.Resource[None] = providers.Resource(
-        datastore_lifecycle,
+        context_datastore_lifecycle,
         datastore=catalog_datastore,
+        scope=catalog_is_shared,
     )
 
     # -- application -------------------------------------------------------
@@ -181,8 +183,9 @@ class Container(containers.DeclarativeContainer):
         ),
     )
     iam_datastore_lifecycle: providers.Resource[None] = providers.Resource(
-        datastore_lifecycle,
+        context_datastore_lifecycle,
         datastore=iam_datastore,
+        scope=iam_is_shared,
     )
 
     # -- iam application and read model ------------------------------------
@@ -264,8 +267,9 @@ class Container(containers.DeclarativeContainer):
         ),
     )
     ingestion_datastore_lifecycle: providers.Resource[None] = providers.Resource(
-        datastore_lifecycle,
+        context_datastore_lifecycle,
         datastore=ingestion_datastore,
+        scope=ingestion_is_shared,
     )
 
     # -- ingestion wiring --------------------------------------------------
@@ -325,8 +329,9 @@ class Container(containers.DeclarativeContainer):
         ),
     )
     vocabulary_datastore_lifecycle: providers.Resource[None] = providers.Resource(
-        datastore_lifecycle,
+        context_datastore_lifecycle,
         datastore=vocabulary_datastore,
+        scope=vocabulary_is_shared,
     )
 
     # -- vocabulary application and read model -----------------------------
@@ -374,8 +379,9 @@ class Container(containers.DeclarativeContainer):
         ),
     )
     semantic_datastore_lifecycle: providers.Resource[None] = providers.Resource(
-        datastore_lifecycle,
+        context_datastore_lifecycle,
         datastore=semantic_datastore,
+        scope=semantic_is_shared,
     )
 
     # -- semantic application and read model -------------------------------
@@ -423,8 +429,9 @@ class Container(containers.DeclarativeContainer):
         ),
     )
     comment_datastore_lifecycle: providers.Resource[None] = providers.Resource(
-        datastore_lifecycle,
+        context_datastore_lifecycle,
         datastore=comment_datastore,
+        scope=comment_is_shared,
     )
 
     # -- comment application and read model ----------------------------------
@@ -494,8 +501,9 @@ class Container(containers.DeclarativeContainer):
         ),
     )
     llm_config_datastore_lifecycle: providers.Resource[None] = providers.Resource(
-        datastore_lifecycle,
+        context_datastore_lifecycle,
         datastore=llm_config_datastore,
+        scope=llm_config_is_shared,
     )
 
     # -- llm config application and read model --------------------------------
@@ -555,8 +563,9 @@ class Container(containers.DeclarativeContainer):
         ),
     )
     conversation_datastore_lifecycle: providers.Resource[None] = providers.Resource(
-        datastore_lifecycle,
+        context_datastore_lifecycle,
         datastore=conversation_datastore,
+        scope=conversation_is_shared,
     )
 
     # -- conversation application and read model -------------------------------

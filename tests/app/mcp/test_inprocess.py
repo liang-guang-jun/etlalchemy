@@ -9,6 +9,7 @@ from etlalchemy.app.bootstrap import Container
 from etlalchemy.app.mcp.inprocess import InProcessConnector
 from etlalchemy.app.mcp.server import MCPServer
 from etlalchemy.app.mcp.session import bind_session, context_session_id
+
 from tests.app.mcp.support import sign_in
 
 

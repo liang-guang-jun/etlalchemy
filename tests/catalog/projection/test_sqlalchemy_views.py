@@ -10,12 +10,12 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-from eventsourcing.persistence import Tracking
-
 from etlalchemy.catalog.aggregates.types import DataType
 from etlalchemy.catalog.projection.sqlalchemy import SQLAlchemyCatalogView
 from etlalchemy.catalog.projection.view import CatalogView
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
+from eventsourcing.persistence import Tracking
+
 from tests.support import async_postgres_url, sqlite_url
 
 UPSTREAM = "catalog-application"

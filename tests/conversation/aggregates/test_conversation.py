@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-
 from etlalchemy.conversation.aggregates.conversation import Conversation
 from etlalchemy.conversation.aggregates.errors import (
     ApprovalAlreadyDecidedError,

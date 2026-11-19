@@ -11,6 +11,7 @@ from etlalchemy.llm_config.aggregates.errors import (
     ProviderCredentialError,
 )
 from etlalchemy.shared.credentials import profile_reference
+from etlalchemy.shared.utils import PROFILE_KINDS as PROFILE_KINDS
 
 LlmKind = Literal["openai", "databricks_ai_gateway"]
 """Kinds the chat model factory can build."""
@@ -21,8 +22,6 @@ DEFAULT_PROVIDER_KINDS: frozenset[str] = frozenset(get_args(LlmKind))
 KINDS_REQUIRING_ENDPOINT: frozenset[str] = frozenset({"databricks_ai_gateway"})
 """Kinds that cannot be built without an explicit endpoint."""
 
-PROFILE_KINDS: frozenset[str] = frozenset({"databricks_ai_gateway"})
-"""Kinds that can authenticate through a local Databricks CLI profile."""
 
 MAX_PROVIDER_NAME_LENGTH = 64
 """Maximum length of a provider name."""

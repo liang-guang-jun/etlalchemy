@@ -5,11 +5,10 @@ from __future__ import annotations
 from uuid import UUID
 
 import pytest
-from structlog.testing import capture_logs
-
 from etlalchemy.shared.logging import reset_logging
 from etlalchemy.vocabulary.aggregates.errors import UnknownLinkError, UnknownTermError
 from etlalchemy.vocabulary.application import VocabularyApplication
+from structlog.testing import capture_logs
 
 
 @pytest.fixture(autouse=True)

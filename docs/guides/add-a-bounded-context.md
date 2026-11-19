@@ -33,8 +33,9 @@ flowchart TB
     end
     subgraph assembly["etlalchemy/app/"]
         fac["bootstrap/factories.py"]
+        ctx["bootstrap/contexts.py (one spec)"]
         con["bootstrap/container.py"]
-        life["bootstrap/lifecycle.py (CONTEXTS)"]
+        life["bootstrap/lifecycle.py"]
         set_["bootstrap/settings.py (ContextSettings)"]
         api["api/routes/&lt;context&gt;.py"]
         sch["schemas/&lt;context&gt;.py"]
@@ -43,7 +44,7 @@ flowchart TB
     end
     tests["tests/&lt;context&gt;/ + tests/app/test_postgres_tables.py"]
     ag --> app --> proj --> init
-    init --> fac --> con --> life
+    init --> fac --> ctx --> life
     api --> con
     sch --> api
     mcp_pkg --> srv
@@ -105,19 +106,28 @@ class WarehouseProjection(AsyncLoggedProjection[SQLAlchemyWarehouseView]):
     name = "warehouse_projection"
 ```
 
+The view extends `etlalchemy.shared.persistence.AsyncCoreView`, which supplies
+`_write`, `_fetch_all`, `_fetch_one` and `create_table` (calling a `migrate`
+hook for columns an older table predates). A new view therefore declares only
+`view_metadata` and its own commands — never a private copy of those helpers.
+
 ## 4. Assembly
 
 | File | Add |
 |---|---|
-| `bootstrap/factories.py` | `get_warehouse_env`, `WarehouseViewFactory` |
+| `bootstrap/factories.py` | `WarehouseViewFactory(ViewFactory)` with `view_class` + `runner_factory` |
 | `bootstrap/settings.py` | `WarehouseSettings` with its own tracking table |
-| `bootstrap/container.py` | datastore, view, application, projection runner |
-| `bootstrap/lifecycle.py` | the context in `CONTEXTS` |
+| `bootstrap/contexts.py` | one `("warehouse", WarehouseViewFactory(), WarehouseApplication)` entry |
+| `bootstrap/container.py` | only what the common shape does not cover (extra ports, options) |
 | `app/schemas/warehouse.py` | `*Response` models with `from_row` |
-| `app/api/routes/warehouse.py` | `APIRouter(prefix="/warehouse")` |
-| `app/api/app.py` | include the router and its error handlers |
+| `app/api/routes/warehouse.py` | `APIRouter(prefix="/warehouse")` + `add_exception_handlers` |
 | `mcp/warehouse/__init__.py` | `@mcp_context("warehouse", INSTRUCTIONS)` + `register` |
 | `mcp/server.py` | one import line — that is the registration entry point |
+
+`bootstrap/contexts.py` is the single registry: the lifecycle starts every spec
+in order, the HTTP application includes its router and error handlers, and
+`tests/app/test_postgres_tables.py` derives the expected table names from it. A
+context added there needs no edit in `lifecycle.py` or `api/app.py`.
 
 A context nobody imports in `mcp/server.py` is silently absent from the MCP
 server. Mount without a namespace: a namespace renames every tool, resource and

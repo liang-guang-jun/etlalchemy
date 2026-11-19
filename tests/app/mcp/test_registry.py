@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import pytest
-from fastmcp import Client, FastMCP
-
 from etlalchemy.app.mcp import registry
+from fastmcp import Client, FastMCP
 
 
 async def _tool_names(server: FastMCP) -> set[str]:

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 import { useTargets } from '@/entities/comment';
-import { urnsIn } from '@/shared/lib/urn';
+import { urnReferences, urnsIn } from '@/shared/lib/urn';
 
 /**
  * Builds the key a described target is indexed by.
@@ -29,13 +29,8 @@ function refKey(type: string, id: string): string {
 export function useUrnLabels(text: string): ReadonlyMap<string, string> {
   const targets = useMemo(() => urnsIn(text), [text]);
   const refs = useMemo(
-    () =>
-      targets.flatMap((target) =>
-        target.reference === null
-          ? []
-          : [{ targetType: target.reference.type, targetId: target.reference.id }],
-      ),
-    [targets],
+    () => urnReferences(text).map((ref) => ({ targetType: ref.type, targetId: ref.id })),
+    [text],
   );
   const described = useTargets(refs);
 

@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from eventsourcing.persistence import Tracking
-
 from etlalchemy.comment.aggregates.errors import (
     CommentAuthorMismatchError,
     DuplicateThreadError,
@@ -23,6 +21,8 @@ from etlalchemy.comment.aggregates.errors import (
 from etlalchemy.comment.application import CommentApplication, CommentOptions
 from etlalchemy.comment.projection.sqlalchemy import SQLAlchemyCommentView
 from etlalchemy.iam.aggregates.errors import AuthenticationError, PermissionDeniedError
+from eventsourcing.persistence import Tracking
+
 from tests.comment.support import FakeAuthorization, FakeTargetLookup
 
 NOW = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)

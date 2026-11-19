@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 import pytest
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-
 from etlalchemy.llm_config.application import LlmConfigApplication
 from etlalchemy.llm_config.projection.sqlalchemy import SQLAlchemyLlmProviderView
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
+
 from tests.llm_config.support import FakeAuthorization, FakeSecrets
 
 

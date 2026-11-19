@@ -5,7 +5,6 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-
 from etlalchemy.ingestion.aggregates.errors import InvalidImportRunStateError
 from etlalchemy.ingestion.aggregates.import_run import ImportRun
 

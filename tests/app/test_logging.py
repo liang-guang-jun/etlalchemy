@@ -11,14 +11,13 @@ from typing import Any
 
 import pytest
 import structlog
-from fastapi.testclient import TestClient
-from structlog.testing import capture_logs
-
 from etlalchemy.app.api.app import create_app
 from etlalchemy.app.bootstrap import Container
 from etlalchemy.app.bootstrap.lifecycle import run_container
 from etlalchemy.app.config.settings import AppSettings
 from etlalchemy.shared.logging import configure_logging, get_logger, reset_logging
+from fastapi.testclient import TestClient
+from structlog.testing import capture_logs
 
 
 @pytest.fixture(autouse=True)

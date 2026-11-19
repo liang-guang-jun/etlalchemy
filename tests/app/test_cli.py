@@ -7,11 +7,10 @@ from typing import Any
 
 import pytest
 import uvicorn
-from typer.testing import CliRunner
-
 from etlalchemy import __version__
 from etlalchemy.app.cli.main import app
 from etlalchemy.app.config.loader import CONFIG_FILES_ENV, load_settings
+from typer.testing import CliRunner
 
 _ENV_KEYS = (
     CONFIG_FILES_ENV,

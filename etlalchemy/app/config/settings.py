@@ -14,9 +14,8 @@ from pydantic_settings import (
 )
 
 from etlalchemy.agent.redaction import DEFAULT_REDACT_KEYS
-from etlalchemy.comment.aggregates.types import DEFAULT_TARGET_TYPES
-from etlalchemy.llm_config.aggregates.types import PROFILE_KINDS
 from etlalchemy.shared.credentials import profile_reference
+from etlalchemy.shared.utils import DEFAULT_TARGET_TYPES, PROFILE_KINDS
 
 PERSISTENCE_MODULE = "eventsourcing.asyncio.sqlalchemy"
 """Persistence module of the asyncio infrastructure used by every context."""
@@ -209,6 +208,12 @@ class LlmConfigSettings(BaseModel):
     projection: LlmConfigProjectionSettings = Field(
         default_factory=LlmConfigProjectionSettings,
     )
+    max_providers_per_user: int = 50
+    """Hard cap on the live providers one user may own."""
+    default_page_size: int = 50
+    """Page size used when a read does not specify one."""
+    max_page_size: int = 200
+    """Upper bound of every page size."""
 
 
 class ConversationProjectionSettings(ProjectionSettings):

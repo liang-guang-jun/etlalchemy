@@ -5,14 +5,14 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
+from etlalchemy.agent.runtime import AgentRunner, RunRequest
+from etlalchemy.agent.settings import AgentLimits, AgentRuntimeSettings, ApprovalRule
 from langchain_core.language_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.memory import MemorySaver
 
-from etlalchemy.agent.runtime import AgentRunner, RunRequest
-from etlalchemy.agent.settings import AgentLimits, AgentRuntimeSettings, ApprovalRule
 from tests.agent.support import FakeConversation, FakeMcpClient, FakeObserver
 
 

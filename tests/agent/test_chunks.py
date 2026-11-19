@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
-
 from etlalchemy.agent.runtime import _final_text, _split_delta
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
 
 def chunk(content: Any, **extra: Any) -> AIMessageChunk:

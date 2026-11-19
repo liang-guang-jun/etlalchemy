@@ -6,11 +6,11 @@ from uuid import UUID
 
 import pytest
 import structlog
-from structlog.testing import capture_logs
-
 from etlalchemy.ingestion import IngestionApplication
 from etlalchemy.ingestion.ports.data_source import ColumnInfo
 from etlalchemy.shared.logging import reset_logging
+from structlog.testing import capture_logs
+
 from tests.ingestion.support import FakeSource, RecordingCatalogApplication
 
 

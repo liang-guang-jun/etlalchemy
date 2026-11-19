@@ -5,14 +5,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 from dependency_injector import providers
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-
 from etlalchemy.app.bootstrap import Container
 from etlalchemy.catalog.projection.sqlalchemy import SQLAlchemyCatalogView
 from etlalchemy.comment.projection.sqlalchemy import SQLAlchemyCommentView
 from etlalchemy.ingestion.projection.sqlalchemy import SQLAlchemyIngestionView
 from etlalchemy.semantic.projection.sqlalchemy import SQLAlchemySemanticView
 from etlalchemy.vocabulary.projection.sqlalchemy import SQLAlchemyVocabularyView
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
 
 
 async def test_catalog_shares_the_global_datastore(

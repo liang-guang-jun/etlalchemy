@@ -6,12 +6,12 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from eventsourcing.persistence import Tracking
-from structlog.testing import capture_logs
-
 from etlalchemy.comment.application import CommentApplication
 from etlalchemy.comment.projection.sqlalchemy import SQLAlchemyCommentView
 from etlalchemy.shared.logging import reset_logging
+from eventsourcing.persistence import Tracking
+from structlog.testing import capture_logs
+
 from tests.comment.support import FakeAuthorization
 
 NOW = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)

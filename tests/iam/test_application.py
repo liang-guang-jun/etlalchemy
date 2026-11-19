@@ -9,7 +9,6 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-
 from etlalchemy.iam.aggregates.errors import (
     AuthenticationError,
     BootstrapAlreadyCompletedError,
@@ -17,14 +16,15 @@ from etlalchemy.iam.aggregates.errors import (
     DuplicateIdentityError,
     GroupCycleError,
     IdentityInvariantError,
-    LastSystemAdminError,
     LastLoginIdentityError,
+    LastSystemAdminError,
     PermissionDeniedError,
     ScopeExceedsGrantError,
     SessionRevokedError,
 )
 from etlalchemy.iam.application import IamApplication
 from etlalchemy.iam.projection.projection import run_iam_projection
+
 from tests.iam.support import build_application, login, login_api_key, sync
 from tests.support import async_env, sqlite_url
 
@@ -122,8 +122,8 @@ async def test_tenant_membership_is_written_on_both_sides(
     members = await application.list_tenant_members(root.session_id, tenant_id)
     assert [member.username for member in members] == ["alice"]
 
-    tenant = await application._tenant(tenant_id)  # noqa: SLF001 - assertion helper
-    user = await application._user(user_id)  # noqa: SLF001 - assertion helper
+    tenant = await application._tenant(tenant_id)
+    user = await application._user(user_id)
     assert tenant.has_member(user_id)
     assert tenant_id in user.memberships
 

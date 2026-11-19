@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-from langchain_core.messages import AIMessageChunk
-
 import etlalchemy.llm_config.adapters.chat_models as chat_models
+import pytest
 from etlalchemy.llm_config.adapters.chat_models import build_chat_model, coerce_option
 from etlalchemy.llm_config.aggregates.errors import (
     InvalidProviderKindError,
@@ -15,6 +13,7 @@ from etlalchemy.llm_config.aggregates.errors import (
     MissingModelError,
     ProviderCredentialError,
 )
+from langchain_core.messages import AIMessageChunk
 
 
 def raw_chunk(**delta: Any) -> dict[str, Any]:
@@ -33,7 +32,7 @@ def test_coerce_option_reads_scalars() -> None:
 def test_the_reasoning_of_a_chunk_is_kept() -> None:
     """The provider's thinking survives the conversion to a message chunk."""
     model = build_chat_model(kind="openai", credential="test-key", default_model="m")
-    generation = model._convert_chunk_to_generation_chunk(  # noqa: SLF001
+    generation = model._convert_chunk_to_generation_chunk(
         raw_chunk(content="", reasoning_content="hmm"),
         AIMessageChunk,
         None,
@@ -46,7 +45,7 @@ def test_the_reasoning_of_a_chunk_is_kept() -> None:
 def test_the_answer_of_a_chunk_is_untouched() -> None:
     """A regular delta keeps its text and gains no reasoning."""
     model = build_chat_model(kind="openai", credential="test-key", default_model="m")
-    generation = model._convert_chunk_to_generation_chunk(  # noqa: SLF001
+    generation = model._convert_chunk_to_generation_chunk(
         raw_chunk(content="hello"),
         AIMessageChunk,
         None,

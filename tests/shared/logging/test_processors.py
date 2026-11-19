@@ -6,7 +6,6 @@ import re
 from typing import Any
 
 import pytest
-
 from etlalchemy.shared.logging.processors import render_stdout_line, stdout_renderer
 
 ANSI = re.compile(r"\033\[[0-9;]*m")

@@ -5,11 +5,11 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from structlog.testing import capture_logs
-
 from etlalchemy.catalog.application import CatalogApplication
 from etlalchemy.catalog.projection.projection import run_catalog_projection
 from etlalchemy.shared.logging import reset_logging
+from structlog.testing import capture_logs
+
 from tests.support import async_env, sqlite_url
 
 

@@ -7,23 +7,10 @@ layer with the IAM application and read model.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
-
-@dataclass(frozen=True)
-class SessionUser:
-    """The active session behind a command, with the caller it belongs to."""
-
-    session_id: UUID
-    """ID of the validated session."""
-    user_id: UUID
-    """ID of the user behind the session."""
-    tenant_id: UUID | None
-    """Tenant the session acts in, or ``None`` for a tenant-free session."""
-    is_system_admin: bool
-    """Whether the user holds the system administrator flag."""
+from etlalchemy.shared.session import SessionUser as SessionUser
 
 
 class CommentAuthorizationPort(Protocol):

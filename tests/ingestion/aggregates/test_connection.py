@@ -4,7 +4,6 @@ from dataclasses import FrozenInstanceError, is_dataclass
 from typing import Any
 
 import pytest
-
 from etlalchemy.ingestion.aggregates.connection import SourceConnection
 from etlalchemy.ingestion.aggregates.errors import DiscardedError, IngestionError
 

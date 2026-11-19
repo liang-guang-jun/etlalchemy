@@ -6,8 +6,6 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from pydantic import ValidationError
-
 from etlalchemy.agent.errors import parse_tool_error
 from etlalchemy.agent.mcp.tools import (
     ToolAnnotations,
@@ -20,6 +18,8 @@ from etlalchemy.agent.mcp.tools import (
 from etlalchemy.agent.results import AgentRun, ApprovalRequest, ToolCall
 from etlalchemy.agent.security.policy import ApprovalPolicy
 from etlalchemy.agent.settings import AgentLimits, AgentRuntimeSettings, ApprovalRule
+from pydantic import ValidationError
+
 from tests.agent.support import FakeMcpClient
 
 

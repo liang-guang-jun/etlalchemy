@@ -14,43 +14,8 @@ from etlalchemy.app.api.routes.agent import (
 from etlalchemy.app.api.routes.agent import (
     router as agent_router,
 )
-from etlalchemy.app.api.routes.catalog import (
-    add_exception_handlers as add_catalog_exception_handlers,
-)
-from etlalchemy.app.api.routes.catalog import (
-    router as catalog_router,
-)
-from etlalchemy.app.api.routes.comment import (
-    add_exception_handlers as add_comment_exception_handlers,
-)
-from etlalchemy.app.api.routes.comment import (
-    router as comment_router,
-)
-from etlalchemy.app.api.routes.iam import (
-    add_exception_handlers as add_iam_exception_handlers,
-)
-from etlalchemy.app.api.routes.iam import (
-    router as iam_router,
-)
-from etlalchemy.app.api.routes.ingestion import (
-    add_exception_handlers as add_ingestion_exception_handlers,
-)
-from etlalchemy.app.api.routes.ingestion import (
-    router as ingestion_router,
-)
-from etlalchemy.app.api.routes.semantic import (
-    add_exception_handlers as add_semantic_exception_handlers,
-)
-from etlalchemy.app.api.routes.semantic import (
-    router as semantic_router,
-)
-from etlalchemy.app.api.routes.vocabulary import (
-    add_exception_handlers as add_vocabulary_exception_handlers,
-)
-from etlalchemy.app.api.routes.vocabulary import (
-    router as vocabulary_router,
-)
 from etlalchemy.app.bootstrap import Container, api_lifespan
+from etlalchemy.app.bootstrap.contexts import request_contexts
 from etlalchemy.app.mcp.server import MCPServer
 from etlalchemy.shared.logging import get_logger
 
@@ -87,19 +52,13 @@ def create_app(container: Container | None = None) -> FastAPI:
         )
     app.container = container  # type: ignore[attr-defined]
     app.mcp_server = mcp_server  # type: ignore[attr-defined]
-    add_catalog_exception_handlers(app)
-    add_comment_exception_handlers(app)
-    add_iam_exception_handlers(app)
-    add_ingestion_exception_handlers(app)
-    add_semantic_exception_handlers(app)
-    add_vocabulary_exception_handlers(app)
+    for spec in request_contexts():
+        if spec.error_handlers is not None:
+            spec.error_handlers(app)
     add_agent_exception_handlers(app)
-    app.include_router(catalog_router)
-    app.include_router(comment_router)
-    app.include_router(iam_router)
-    app.include_router(ingestion_router)
-    app.include_router(semantic_router)
-    app.include_router(vocabulary_router)
+    for spec in request_contexts():
+        if spec.router is not None:
+            app.include_router(spec.router)
     app.include_router(agent_router)
     # Add the MCP routes after the HTTP routes so they cannot shadow them, and
     # append them directly instead of mounting: a mount at "/mcp" redirects the

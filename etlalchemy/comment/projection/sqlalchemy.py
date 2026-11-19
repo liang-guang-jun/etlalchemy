@@ -16,13 +16,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from eventsourcing.asyncio.sqlalchemy import (
-    AsyncSQLAlchemyDatastore,
-    AsyncSQLAlchemyTrackingRecorder,
-)
 from sqlalchemy import Select, delete, func, or_, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from etlalchemy.comment.aggregates.types import ThreadStatus
 from etlalchemy.comment.projection.tables import (
@@ -37,12 +31,12 @@ from etlalchemy.comment.projection.view import (
     ThreadRow,
     as_uuid,
 )
+from etlalchemy.shared.persistence import AsyncCoreView
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from eventsourcing.persistence import Tracking
-    from sqlalchemy import Table
 
 
 def _mentions_text(mentions: Sequence[UUID]) -> str:
@@ -103,38 +97,10 @@ def _with_depths(rows: Sequence[CommentRow]) -> list[CommentRow]:
     return [replace(row, depth=cache[row.comment_id]) for row in rows]
 
 
-class SQLAlchemyCommentView(AsyncSQLAlchemyTrackingRecorder, CommentView):
+class SQLAlchemyCommentView(AsyncCoreView, CommentView):
     """Asynchronous materialised view of the comment aggregates."""
 
-    async def create_table(self) -> None:
-        """Creates the tracking table and the view tables if they do not exist."""
-        async with self.datastore.transaction() as conn:
-            await conn.run_sync(metadata.create_all)
-            await conn.run_sync(self.datastore.metadata.create_all)
-
-    def _insert(self, table: Table) -> Any:
-        """Returns the upsert construct of the configured dialect."""
-        if self.datastore.dialect_name == AsyncSQLAlchemyDatastore.SQLITE:
-            return sqlite_insert(table)
-        return pg_insert(table)
-
-    async def _write(self, statements: Sequence[Any], tracking: Tracking) -> None:
-        """Applies the statements and records the tracking row atomically."""
-        async with self.transaction() as conn:
-            for statement in statements:
-                await conn.execute(statement)
-            await self.insert_tracking_in_transaction(conn, tracking)
-
-    async def _fetch_all(self, statement: Select[Any]) -> Sequence[Any]:
-        """Executes a read statement and returns all rows."""
-        async with self.datastore.connection() as conn:
-            rows: Sequence[Any] = (await conn.execute(statement)).all()
-            return rows
-
-    async def _fetch_one(self, statement: Select[Any]) -> Any:
-        """Executes a read statement and returns the first row, or ``None``."""
-        async with self.datastore.connection() as conn:
-            return (await conn.execute(statement)).first()
+    view_metadata = metadata
 
     # -- writes -------------------------------------------------------------
 
@@ -153,7 +119,7 @@ class SQLAlchemyCommentView(AsyncSQLAlchemyTrackingRecorder, CommentView):
         tracking: Tracking,
     ) -> None:
         """Registers a thread together with its root comment."""
-        statement = self._insert(comment_threads).values(
+        statement = self._dialect_insert(comment_threads).values(
             thread_id=thread_id,
             target_type=target_type,
             target_id=target_id,
@@ -520,7 +486,7 @@ class SQLAlchemyCommentView(AsyncSQLAlchemyTrackingRecorder, CommentView):
         created_at: datetime,
     ) -> Any:
         """Returns the comment upsert used by creation and replay."""
-        statement = self._insert(comment_comments).values(
+        statement = self._dialect_insert(comment_comments).values(
             comment_id=comment_id,
             thread_id=thread_id,
             parent_comment_id=parent_comment_id,
@@ -556,7 +522,7 @@ class SQLAlchemyCommentView(AsyncSQLAlchemyTrackingRecorder, CommentView):
         """Returns one upsert per mentioned user."""
         statements: list[Any] = []
         for user_id in dict.fromkeys(mentions):
-            statement = self._insert(comment_mentions).values(
+            statement = self._dialect_insert(comment_mentions).values(
                 comment_id=comment_id,
                 thread_id=thread_id,
                 user_id=user_id,

@@ -5,7 +5,6 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 import pytest
-
 from etlalchemy.vocabulary.aggregates.errors import (
     CycleError,
     DiscardedError,
@@ -22,6 +21,7 @@ from etlalchemy.vocabulary.aggregates.errors import (
 from etlalchemy.vocabulary.aggregates.term import Term
 from etlalchemy.vocabulary.aggregates.types import TermLink, TermStatus
 from etlalchemy.vocabulary.application import VocabularyApplication
+
 from tests.vocabulary.support import FakeCatalogView
 
 

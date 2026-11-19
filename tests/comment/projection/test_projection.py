@@ -8,13 +8,13 @@ from uuid import UUID, uuid4
 
 import pytest
 import sqlalchemy as sa
-from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
-
 from etlalchemy.comment.aggregates.errors import UnknownThreadError
 from etlalchemy.comment.application import CommentApplication
 from etlalchemy.comment.projection.projection import run_comment_projection
 from etlalchemy.comment.projection.sqlalchemy import SQLAlchemyCommentView
 from etlalchemy.comment.projection.tables import metadata as view_metadata
+from eventsourcing.asyncio.sqlalchemy import AsyncSQLAlchemyDatastore
+
 from tests.comment.support import FakeAuthorization, FakeTargetLookup
 from tests.support import async_env, sqlite_url
 

@@ -9,10 +9,10 @@ from uuid import UUID
 from dependency_injector.wiring import Provide, inject
 from eventsourcing.application import AggregateNotFoundError
 from eventsourcing.persistence import RecordConflictError
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
+from etlalchemy.app.api.errors import install_exception_handlers
 from etlalchemy.app.bootstrap import Container
 from etlalchemy.app.schemas.catalog import (
     CatalogCreatedResponse,
@@ -59,15 +59,6 @@ NOT_FOUND_ERRORS = (
 )
 
 
-def _error_handler(status_code: int) -> Any:
-    """Builds a handler that renders the error message with the given status."""
-
-    async def handler(request: Request, exc: Exception) -> JSONResponse:
-        return JSONResponse(status_code=status_code, content={"detail": str(exc)})
-
-    return handler
-
-
 async def _schema_row(view: CatalogView, catalog_id: UUID, schema: str) -> SchemaRow:
     """Returns the schema addressed by its registry name or by its id."""
     schema_id = await view.find_schema_id(catalog_id, schema) or uuid_or_none(schema)
@@ -90,11 +81,12 @@ async def _table_row(view: CatalogView, schema_id: UUID, table: str) -> TableRow
 
 def add_exception_handlers(app: FastAPI) -> None:
     """Maps catalog errors to HTTP responses."""
-    for conflict_error in CONFLICT_ERRORS:
-        app.add_exception_handler(conflict_error, _error_handler(409))
-    for missing_error in NOT_FOUND_ERRORS:
-        app.add_exception_handler(missing_error, _error_handler(404))
-    app.add_exception_handler(ValueError, _error_handler(400))
+    install_exception_handlers(
+        app,
+        conflict=CONFLICT_ERRORS,
+        not_found=NOT_FOUND_ERRORS,
+        bad_request=(ValueError,),
+    )
 
 
 @router.post("/catalogs", response_model=CatalogCreatedResponse)

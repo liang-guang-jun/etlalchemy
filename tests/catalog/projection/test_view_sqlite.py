@@ -3,8 +3,6 @@
 from uuid import UUID, uuid4
 
 import pytest
-from eventsourcing.persistence import IntegrityError, Tracking
-
 from etlalchemy.catalog.aggregates.types import DataType
 from etlalchemy.catalog.projection.sqlalchemy import SQLAlchemyCatalogView
 from etlalchemy.catalog.projection.view import (
@@ -13,6 +11,7 @@ from etlalchemy.catalog.projection.view import (
     SchemaRow,
     TableRow,
 )
+from eventsourcing.persistence import IntegrityError, Tracking
 
 UPSTREAM = "catalog-application"
 
